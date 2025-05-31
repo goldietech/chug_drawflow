@@ -206,6 +206,73 @@ $(document).ready(function (e) {
 
   editor.on("nodeSelected", function (id) {
     console.log("Node selected " + id);
+    resetOutputFocus(); // Limpa foco de output anterior
+    resetInputFocus(); // Limpa foco de input anterior
+
+    if (!editor.node_selected) {
+      // Se o nó foi deselecionado (id pode ser de um nó que não é mais o editor.node_selected)
+      return;
+    }
+
+    const selectedNodeElement = editor.node_selected; // Garante que estamos usando o nó atualmente selecionado
+    const currentId = selectedNodeElement.id.replace("node-", ""); // Pega o ID do nó realmente selecionado
+    const outputs = Array.from(
+      selectedNodeElement.querySelectorAll(".outputs .output")
+    );
+
+    if (outputs.length > 0) {
+      let outputToFocus = null;
+      let indexOfOutputToFocus = -1;
+      const nodeData = editor.getNodeFromId(currentId);
+
+      if (nodeData && nodeData.outputs) {
+        // Verifica se nodeData e nodeData.outputs existem
+        // Tenta encontrar um output com conexões existentes
+        for (let i = 0; i < outputs.length; i++) {
+          const outputElement = outputs[i];
+          let outputClass = null;
+          // Pega a classe do output (ex: output_1)
+          for (let cls of outputElement.classList) {
+            if (cls.startsWith("output_") && cls !== "output-focused") {
+              // Garante que não pega a classe de foco
+              outputClass = cls;
+              break;
+            }
+          }
+          if (
+            outputClass &&
+            nodeData.outputs[outputClass] &&
+            nodeData.outputs[outputClass].connections.length > 0
+          ) {
+            outputToFocus = outputElement;
+            indexOfOutputToFocus = i;
+            console.log("Focando output com conexão existente:", outputClass);
+            break;
+          }
+        }
+      } else {
+        console.warn(
+          "Dados do nó ou outputs não encontrados para o nó selecionado:",
+          currentId
+        );
+      }
+
+      // Se nenhum output com conexão foi encontrado (ou dados do nó falharam), foca o primeiro output da lista
+      if (!outputToFocus && outputs.length > 0) {
+        // Adiciona verificação se outputs.length > 0 novamente
+        outputToFocus = outputs[0];
+        indexOfOutputToFocus = 0;
+        console.log(
+          "Nenhum output com conexão (ou erro nos dados), focando o primeiro output da lista."
+        );
+      }
+
+      if (outputToFocus) {
+        currentFocusedOutputIndex = indexOfOutputToFocus;
+        highlightOutput(outputToFocus, outputs);
+        console.log("Output focado automaticamente:", outputToFocus.classList);
+      }
+    }
   });
 
   editor.on("moduleCreated", function (name) {
@@ -685,9 +752,10 @@ $(document).ready(function (e) {
   });
 
   editor.on("nodeUnselected", function () {
+    console.log("Node unselected");
     resetOutputFocus();
+    resetInputFocus();
   });
-
   document
     .getElementById("drawflow")
     .addEventListener("click", function (event) {
@@ -945,7 +1013,172 @@ $(document).ready(function (e) {
         }
       }
       highlightOutput(outputs[currentFocusedOutputIndex], outputs);
+    } else if (
+      event.key === "ArrowRight" &&
+      event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey
+    ) {
+      if (editor.node_selected && focusedOutputElement) {
+        // Só ativa se um nó estiver selecionado E um output dele estiver focado
+        event.preventDefault();
+        console.log("Seta para Direita pressionada com output focado.");
+
+        const parentNodeId = editor.node_selected.id.replace("node-", "");
+        let outputClassForNavigation = null;
+        // Encontra a classe do output focado, ex: "output_1"
+        for (let cls of focusedOutputElement.classList) {
+          if (cls.startsWith("output_") && cls !== "output-focused") {
+            outputClassForNavigation = cls;
+            break;
+          }
+        }
+
+        if (!outputClassForNavigation) {
+          console.warn(
+            "Não foi possível determinar a classe do output focado para navegação."
+          );
+          return; // Sai da função se não encontrar a classe do output
+        }
+
+        const parentNodeData = editor.getNodeFromId(parentNodeId);
+        if (
+          !parentNodeData ||
+          !parentNodeData.outputs ||
+          !parentNodeData.outputs[outputClassForNavigation]
+        ) {
+          console.warn(
+            "Dados do nó pai ou output específico não encontrados para navegação:",
+            parentNodeId,
+            outputClassForNavigation
+          );
+          return; // Sai se não encontrar dados do output
+        }
+
+        const outputConnections =
+          parentNodeData.outputs[outputClassForNavigation].connections;
+
+        if (outputConnections && outputConnections.length > 0) {
+          const firstConnection = outputConnections[0]; // Segue a primeira conexão encontrada
+          const childNodeIdString = firstConnection.node; // ID do nó filho (já é string)
+
+          const childNodeElement = document.getElementById(
+            "node-" + childNodeIdString
+          );
+
+          if (childNodeElement) {
+            // 1. Selecionar o nó filho.
+            // O evento 'nodeSelected' (disparado abaixo) cuidará de chamar resetOutputFocus.
+            if (editor.node_selected) {
+              editor.node_selected.classList.remove("selected");
+            }
+            childNodeElement.classList.add("selected");
+            editor.node_selected = childNodeElement; // Define o novo nó como selecionado
+            editor.dispatch("nodeSelected", childNodeIdString); // Dispara o evento
+            console.log(`Navegou para nó filho: ${childNodeIdString}`);
+
+            // 2. Mover a visão para o nó filho recém-selecionado
+            // O setTimeout ajuda a garantir que o DOM e a seleção estejam completamente atualizados.
+            setTimeout(() => {
+              focusViewOnNode(childNodeElement, editor);
+            }, 50); // Pequeno delay, ajuste se necessário
+          } else {
+            console.warn(
+              `Nó filho com ID 'node-${childNodeIdString}' não encontrado no DOM.`
+            );
+          }
+        } else {
+          console.log("Output focado não tem conexões para seguir.");
+          // Opcional: algum feedback visual ou sonoro indicando que não há para onde ir.
+        }
+      }
+    } // Dentro de document.addEventListener('keydown', function(event) { ... });
+    // ... (lógica existente para Ctrl+Setas Output, Seta para Direita, etc.)
+
+    // NOVO: Navegação entre INPUTS com Ctrl+Shift+Setas Cima/Baixo
+
+    // NOVO: Navegação para o nó PAI com Seta para Esquerda
+    else if (
+      event.key === "ArrowLeft" &&
+      event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey
+    ) {
+      if (editor.node_selected && focusedInputElement) {
+        // Só ativa se um nó estiver selecionado E um INPUT dele estiver focado
+        event.preventDefault();
+        console.log("Seta para Esquerda pressionada com input focado.");
+
+        const currentNodeId = editor.node_selected.id.replace("node-", "");
+        let inputClassForNavigation = null;
+        for (let cls of focusedInputElement.classList) {
+          if (cls.startsWith("input_") && cls !== "input-focused") {
+            inputClassForNavigation = cls;
+            break;
+          }
+        }
+
+        if (!inputClassForNavigation) {
+          console.warn(
+            "Não foi possível determinar a classe do input focado para navegação para trás."
+          );
+          return;
+        }
+
+        const currentNodeData = editor.getNodeFromId(currentNodeId);
+        if (
+          !currentNodeData ||
+          !currentNodeData.inputs ||
+          !currentNodeData.inputs[inputClassForNavigation]
+        ) {
+          console.warn(
+            "Dados do nó atual ou input específico não encontrados para navegação para trás:",
+            currentNodeId,
+            inputClassForNavigation
+          );
+          return;
+        }
+
+        const inputConnections =
+          currentNodeData.inputs[inputClassForNavigation].connections;
+
+        if (inputConnections && inputConnections.length > 0) {
+          const firstConnection = inputConnections[0]; // Geralmente um input tem uma conexão de entrada
+          const parentNodeIdString = firstConnection.node; // ID do nó pai
+          // const parentOutputClass = firstConnection.input; // Classe do output no nó pai que se conecta a este input
+
+          const parentNodeElement = document.getElementById(
+            "node-" + parentNodeIdString
+          );
+
+          if (parentNodeElement) {
+            // Selecionar o nó pai.
+            // O evento 'nodeSelected' (disparado abaixo) cuidará de chamar resetInputFocus e resetOutputFocus,
+            // e também tentará focar um output no parentNodeElement.
+            if (editor.node_selected) {
+              editor.node_selected.classList.remove("selected");
+            }
+            parentNodeElement.classList.add("selected");
+            editor.node_selected = parentNodeElement;
+            editor.dispatch("nodeSelected", parentNodeIdString);
+            console.log(`Navegou para nó pai: ${parentNodeIdString}`);
+
+            setTimeout(() => {
+              focusViewOnNode(parentNodeElement, editor);
+            }, 50);
+          } else {
+            console.warn(
+              `Nó pai com ID 'node-${parentNodeIdString}' não encontrado no DOM.`
+            );
+          }
+        } else {
+          console.log(
+            "Input focado não tem conexões de entrada para seguir para trás."
+          );
+        }
+      }
     }
+    // ... fim do document.addEventListener('keydown', function(event) { ... }); Ex: });
   });
 
   // Modifique a função addNodeToDrawFlow para que ela use os arrays de entrada/saída corretamente
@@ -955,7 +1188,50 @@ $(document).ready(function (e) {
 // Adicione estas variáveis no escopo global do seu diagrama.js
 var focusedOutputElement = null;
 var currentFocusedOutputIndex = -1; // -1 indica nenhum output focado
+// Adicione estas duas variáveis globais
+var focusedInputElement = null;
+var currentFocusedInputIndex = -1;
+// Adicione esta função para limpar o foco do input
+function resetInputFocus() {
+  if (focusedInputElement) {
+    focusedInputElement.classList.remove("input-focused");
+  }
+  focusedInputElement = null;
+  currentFocusedInputIndex = -1;
+  // Garante limpeza visual se um nó ainda estiver selecionado
+  if (editor.node_selected) {
+    const inputs = Array.from(
+      editor.node_selected.querySelectorAll(".inputs .input")
+    );
+    inputs.forEach((inp) => inp.classList.remove("input-focused"));
+  }
+}
+// Adicione esta função para destacar um input
+function highlightInput(inputElement, nodeInputs) {
+  // Limpa foco de todos os inputs do nó atual
+  if (nodeInputs && nodeInputs.length > 0) {
+    nodeInputs.forEach((inp) => inp.classList.remove("input-focused"));
+  } else if (focusedInputElement) {
+    // Fallback para limpar o foco global se nodeInputs não for fornecido
+    focusedInputElement.classList.remove("input-focused");
+  }
 
+  // Limpa o antigo focusedInputElement se ele não estiver na lista atual de inputs do nó
+  if (
+    focusedInputElement &&
+    (!nodeInputs || !nodeInputs.includes(focusedInputElement))
+  ) {
+    focusedInputElement.classList.remove("input-focused");
+  }
+
+  if (inputElement) {
+    inputElement.classList.add("input-focused");
+    focusedInputElement = inputElement;
+    // currentFocusedInputIndex deve ser atualizado pelo chamador
+  } else {
+    focusedInputElement = null; // Se inputElement for null, limpa o foco
+  }
+}
 // Função para resetar o foco do output
 function resetOutputFocus() {
   if (focusedOutputElement) {
@@ -1291,7 +1567,27 @@ function addNodeToDrawFlow(name, pos_x, pos_y, data = null) {
             outputClassForConnection,
             firstInputClass
           );
-          setTimeout(() => alinharDrawflowHierarquicamente(editor), 250);
+          // DENTRO do setTimeout na função addNodeToDrawFlow:
+          const newNodeElement_dd = document.getElementById(
+            "node-" + String(newNodeId)
+          ); // Note a variável _dd
+          if (newNodeElement_dd) {
+            // a. Selecionar o novo nó
+            if (editor.node_selected) {
+              editor.node_selected.classList.remove("selected");
+            }
+            newNodeElement_dd.classList.add("selected");
+            editor.node_selected = newNodeElement_dd;
+            editor.dispatch("nodeSelected", String(newNodeId));
+            console.log(`[DragDrop] Nó ${newNodeId} selecionado.`);
+
+            // b. Mover a visão para o novo nó usando a função auxiliar
+            focusViewOnNode(newNodeElement_dd, editor);
+          } else {
+            console.warn(
+              `[DragDrop] Elemento do nó ${newNodeId} não encontrado após alinhamento para focar visão.`
+            );
+          }
         }
       }
       resetOutputFocus();
@@ -1635,7 +1931,6 @@ function alinharDrawflowHierarquicamente(editor) {
     "[Alinhar] Alinhamento hierárquico concluído e conexões atualizadas."
   );
 }
-
 function focusViewOnNode(nodeElementToFocus, editorInstance) {
   if (
     !nodeElementToFocus ||
@@ -1651,29 +1946,19 @@ function focusViewOnNode(nodeElementToFocus, editorInstance) {
     return;
   }
 
-  // Assegura que as dimensões sejam lidas após qualquer possível atualização do DOM
-  // Um setTimeout pequeno pode ajudar se houver problemas de timing com offsetWidth/Height
-  // setTimeout(() => {
   const nodeCanvasX = nodeElementToFocus.offsetLeft;
   const nodeCanvasY = nodeElementToFocus.offsetTop;
-
   // Usa uma estimativa se offsetWidth/Height não estiverem disponíveis imediatamente
-  // (ex: nó recém-adicionado e DOM não totalmente atualizado)
   const nodeWidth =
-    nodeElementToFocus.offsetWidth > 0 ? nodeElementToFocus.offsetWidth : 160; // Largura padrão como fallback
+    nodeElementToFocus.offsetWidth > 0 ? nodeElementToFocus.offsetWidth : 160;
   const nodeHeight =
-    nodeElementToFocus.offsetHeight > 0 ? nodeElementToFocus.offsetHeight : 80; // Altura padrão como fallback
-
+    nodeElementToFocus.offsetHeight > 0 ? nodeElementToFocus.offsetHeight : 80;
   const nodeWidthZoomed = nodeWidth * editorInstance.zoom;
   const nodeHeightZoomed = nodeHeight * editorInstance.zoom;
-
   const containerWidth = editorInstance.container.clientWidth;
   const containerHeight = editorInstance.container.clientHeight;
-
-  // Posição X desejada para o nó no viewport (e.g., 25% da largura do container, da esquerda)
-  const targetViewportX = containerWidth * 0.25;
-  // Posição Y desejada para o centro vertical do nó no viewport (centro vertical do container)
-  const targetViewportY = containerHeight / 2;
+  const targetViewportX = containerWidth * 0.25; // Nó ficará a 25% da borda esquerda
+  const targetViewportY = containerHeight / 2; // Nó ficará centralizado verticalmente
 
   let new_canvas_x = targetViewportX - nodeCanvasX * editorInstance.zoom;
   let new_canvas_y =
@@ -1687,10 +1972,7 @@ function focusViewOnNode(nodeElementToFocus, editorInstance) {
     x: editorInstance.canvas_x,
     y: editorInstance.canvas_y,
   });
-  console.log(
-    `Visão focada no nó ${nodeElementToFocus.id}. Canvas X: ${editorInstance.canvas_x}, Canvas Y: ${editorInstance.canvas_y}`
-  );
-  // }, 0); // Delay 0 para enfileirar após o fluxo atual, ou um valor maior se necessário
+  console.log(`Visão focada no nó ${nodeElementToFocus.id}.`);
 }
 let undoStack = [];
 
@@ -1899,7 +2181,6 @@ function setupSelectionAndClipboard(editor) {
       event.preventDefault();
       copySelectedNodes();
     }
-
     if (event.ctrlKey && event.key === "v") {
       event.preventDefault();
       pasteNodes();

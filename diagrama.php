@@ -714,6 +714,14 @@
       scrollbar-color: var(--galaxy-accent-cyan, #00ffff) rgba(0, 0, 0, 0.2);
     }
 
+    .drawflow .drawflow-node .input.input-focused {
+      border: 3px solid #00ccff;
+      /* Ciano para destaque */
+      box-shadow: 0 0 10px #00ccff;
+      background-color: #d4f0f7;
+      /* Fundo levemente azulado */
+    }
+
     .drawflow .drawflow-node .output.output-focused {
       border: 3px solid #ffcc00;
       /* Amarelo para destaque */
