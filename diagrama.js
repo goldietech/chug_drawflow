@@ -402,7 +402,7 @@ $(document).ready(function (e) {
     }
   });
 
-  // --- LÓGICA DO "ENTER" ATUALIZADA ---
+  // --- LÓGICA DO "ENTER" ATUALIZADA ---$sidebarContainer.on(
   $sidebarContainer.on(
     "keydown",
     "#palette-search-input-injected",
@@ -417,24 +417,334 @@ $(document).ready(function (e) {
             .first();
 
           if ($itemToAdd.length) {
-            const nodeCodigo = $itemToAdd.data("node"); // Seu $elemento['codigo']
+            const nodeCodigo = $itemToAdd.data("node");
             const $textarea = $itemToAdd.find(
               "textarea.node-elem-" + nodeCodigo
             );
 
             if ($textarea.length) {
-              // Função auxiliar para parsear JSON de forma segura
-              function safeJsonParse(dataString, defaultValue = {}) {
+              const nodeInternalData = JSON.parse(
+                JSON.stringify($textarea.data("dados") || {})
+              );
+              const nodeInputsDataRaw = $textarea.data("entrada");
+              const nodeOutputsDataRaw = $textarea.data("saida");
+              const nodeHtmlContent = $textarea.val();
+
+              // Função robusta para parsear/gerar arrays de input/output (mantenha ou insira se não existir)
+              function parseOrGenerateIOArray(rawData, type = "input") {
+                let parsedData = [];
+                if (Array.isArray(rawData)) {
+                  parsedData = rawData;
+                } else if (
+                  typeof rawData === "string" &&
+                  rawData.trim() !== ""
+                ) {
+                  try {
+                    const tempParsed = JSON.parse(rawData);
+                    if (Array.isArray(tempParsed)) {
+                      parsedData = tempParsed;
+                    } else {
+                      console.warn(
+                        `Dados de ${type} parseados de string não são um array:`,
+                        tempParsed,
+                        `String original: ${rawData}`
+                      );
+                    }
+                  } catch (err) {
+                    console.warn(
+                      `Erro ao parsear string de ${type}:`,
+                      err,
+                      `String original: ${rawData}`
+                    );
+                  }
+                } else if (typeof rawData === "number" && rawData > 0) {
+                  console.log(
+                    `Dados de ${type} é um número (${rawData}). Gerando array padrão.`
+                  );
+                  for (let i = 0; i < rawData; i++) {
+                    if (type === "output") {
+                      parsedData.push({
+                        codigo: `Saída ${i + 1}`,
+                        nome: `Saída ${i + 1}`,
+                        personalizado: 0,
+                      });
+                    } else {
+                      parsedData.push({ nome: `Entrada ${i + 1}` });
+                    }
+                  }
+                }
+
+                if (type === "output") {
+                  parsedData = parsedData.map((item, index) => {
+                    if (typeof item !== "object" || item === null)
+                      return {
+                        codigo: `Saída ${index + 1}_obj_err`,
+                        nome: `Saída ${index + 1}_obj_err`,
+                        personalizado: 0,
+                      };
+                    if (typeof item.codigo === "undefined")
+                      item.codigo = `Saída ${index + 1}_cod_err`;
+                    if (typeof item.nome === "undefined")
+                      item.nome = item.codigo;
+                    if (typeof item.personalizado === "undefined")
+                      item.personalizado = 0;
+                    return item;
+                  });
+                } else {
+                  parsedData = parsedData.map((item, index) => {
+                    if (typeof item !== "object" || item === null)
+                      return { nome: `Entrada ${index + 1}_obj_err` };
+                    if (typeof item.nome === "undefined")
+                      item.nome = `Entrada ${index + 1}`;
+                    return item;
+                  });
+                }
+                return parsedData;
+              }
+
+              const nodeInputsArray = parseOrGenerateIOArray(
+                nodeInputsDataRaw,
+                "input"
+              );
+              const nodeOutputsArray = parseOrGenerateIOArray(
+                nodeOutputsDataRaw,
+                "output"
+              );
+
+              console.log(
+                "[DEBUG Palette Enter] Inputs para editor.addNode:",
+                JSON.parse(JSON.stringify(nodeInputsArray))
+              );
+              console.log(
+                "[DEBUG Palette Enter] Outputs para editor.addNode:",
+                JSON.parse(JSON.stringify(nodeOutputsArray))
+              );
+
+              // Posição inicial simples, o alinhamento (se chamado) cuidará do posicionamento mais refinado
+              let initialPosX = 100,
+                initialPosY = 100;
+              if (focusedOutputElement && editor.node_selected) {
+                // Posiciona à direita do nó pai, alinhado verticalmente com o output focado
+                const parentNode = editor.node_selected;
+                const parentCanvasX = parentNode.offsetLeft;
+                const parentCanvasY = parentNode.offsetTop;
+                const parentNodeWidth = parentNode.offsetWidth;
+
+                initialPosX = parentCanvasX + parentNodeWidth + 150; // 150px de espaçamento
+
+                const outputTopInParent = focusedOutputElement.offsetTop;
+                const outputsDivTopInParent =
+                  focusedOutputElement.offsetParent.offsetTop;
+                const outputCenterYInParent =
+                  parentCanvasY +
+                  outputsDivTopInParent +
+                  outputTopInParent +
+                  focusedOutputElement.offsetHeight / 2;
+                const APPROX_NEW_NODE_HEIGHT = 80;
+                initialPosY =
+                  outputCenterYInParent - APPROX_NEW_NODE_HEIGHT / 2;
+              } else {
+                const currentViewCenterX =
+                  (-editor.canvas_x + editor.container.clientWidth / 2) /
+                  editor.zoom;
+                const currentViewCenterY =
+                  (-editor.canvas_y + editor.container.clientHeight / 2) /
+                  editor.zoom;
+                initialPosX = currentViewCenterX - 80; // Metade da largura do nó padrão
+                initialPosY = currentViewCenterY - 40; // Metade da altura do nó padrão
+              }
+
+              if (
+                typeof editor !== "undefined" &&
+                typeof editor.addNode === "function"
+              ) {
+                const newNodeId = editor.addNode(
+                  nodeCodigo,
+                  nodeInputsArray,
+                  nodeOutputsArray,
+                  initialPosX,
+                  initialPosY,
+                  nodeCodigo,
+                  nodeInternalData,
+                  nodeHtmlContent,
+                  false
+                );
+
+                if (newNodeId) {
+                  console.log(
+                    `[Enter Key] Nó '${nodeCodigo}' adicionado com ID: ${newNodeId}.`
+                  );
+                  let connectionMade = false;
+                  if (focusedOutputElement && editor.node_selected) {
+                    const sourceNodeId = editor.node_selected.id.replace(
+                      "node-",
+                      ""
+                    );
+                    let outputClassForConnection = null;
+
+                    for (let cls of focusedOutputElement.classList) {
+                      if (
+                        cls.startsWith("output_") &&
+                        cls !== "output-focused"
+                      ) {
+                        outputClassForConnection = cls;
+                        break;
+                      }
+                    }
+
+                    if (outputClassForConnection) {
+                      const newNodeDataFromEditor = editor.getNodeFromId(
+                        String(newNodeId)
+                      );
+                      if (
+                        newNodeDataFromEditor &&
+                        newNodeDataFromEditor.inputs &&
+                        Object.keys(newNodeDataFromEditor.inputs).length > 0
+                      ) {
+                        const firstInputClass = Object.keys(
+                          newNodeDataFromEditor.inputs
+                        )[0];
+                        editor.addConnection(
+                          sourceNodeId,
+                          String(newNodeId),
+                          outputClassForConnection,
+                          firstInputClass
+                        );
+                        console.log(
+                          `Conectado: ${sourceNodeId}.${outputClassForConnection} -> ${newNodeId}.${firstInputClass}`
+                        );
+                        connectionMade = true;
+                      } else {
+                        console.warn(
+                          `Novo nó ${newNodeId} não possui inputs ou não foi encontrado para conexão.`
+                        );
+                      }
+                    } else {
+                      console.warn(
+                        "Não foi possível determinar a outputClass do elemento focado para conexão."
+                      );
+                    }
+                    // O resetOutputFocus será tratado pelo evento 'nodeSelected'
+                  }
+
+                  if (typeof alinharDrawflowHierarquicamente === "function") {
+                    alinharDrawflowHierarquicamente(editor);
+                    console.log("alinharDrawflowHierarquicamente chamado.");
+                  }
+
+                  setTimeout(() => {
+                    const newNodeElement = document.getElementById(
+                      "node-" + String(newNodeId)
+                    );
+                    if (newNodeElement) {
+                      if (editor.node_selected) {
+                        editor.node_selected.classList.remove("selected");
+                      }
+                      newNodeElement.classList.add("selected");
+                      editor.node_selected = newNodeElement;
+                      editor.dispatch("nodeSelected", String(newNodeId));
+                      console.log(`Nó ${newNodeId} selecionado.`);
+
+                      focusViewOnNode(newNodeElement, editor); // Ou newNodeElement_dd para addNodeToDrawFlow
+                    } else {
+                      console.warn(
+                        `Elemento do nó ${newNodeId} não encontrado após alinhamento para focar visão.`
+                      );
+                    }
+                  }, 300);
+
+                  $searchInput.val("").trigger("input");
+                } else {
+                  console.error(
+                    "[Enter Key] editor.addNode não retornou um ID válido."
+                  );
+                }
+              } else {
+                console.error(
+                  "[Enter Key] A variável 'editor' ou a função 'editor.addNode' não está definida."
+                );
+                alert("Erro ao tentar adicionar o nó. Verifique o console.");
+              }
+            } else {
+              console.warn(
+                `[Enter Key] Textarea com dados para ${nodeCodigo} não encontrada.`
+              );
+            }
+          }
+        }
+      }
+    }
+  );
+
+  // ... (seu código existente do document.ready) ...
+
+  // Eventos para resetar o foco do output
+  editor.on("nodeSelected", function (id) {
+    // console.log("Node selected " + id);
+    resetOutputFocus(); // Reseta o foco ao selecionar um novo nó
+  });
+
+  editor.on("nodeUnselected", function () {
+    resetOutputFocus();
+  });
+
+  document
+    .getElementById("drawflow")
+    .addEventListener("click", function (event) {
+      const target = event.target;
+      // Se o clique foi diretamente no canvas de fundo ou num elemento que não seja nó/conexão
+      if (
+        target.id === "drawflow" ||
+        target.classList.contains("parent-drawflow") ||
+        target.classList.contains("drawflow")
+      ) {
+        if (
+          !target.closest(".drawflow-node") &&
+          !target.closest(".connection") &&
+          !target.closest(".point")
+        ) {
+          resetOutputFocus();
+        }
+      }
+    });
+
+  editor.on("moduleChanged", function (name) {
+    resetOutputFocus();
+  });
+
+  // --- LÓGICA DO "ENTER" ATUALIZADA para conectar nós ---
+  $sidebarContainer.on(
+    "keydown",
+    "#palette-search-input-injected",
+    function (e) {
+      if (e.key === "Enter") {
+        const visibleItemsCount = $searchInput.data("visible-items-count");
+
+        if (visibleItemsCount === 1) {
+          e.preventDefault();
+          const $itemToAdd = $scrollContainer
+            .find(".drag-drawflow:not(.hidden-by-search)")
+            .first();
+
+          if ($itemToAdd.length) {
+            const nodeCodigo = $itemToAdd.data("node");
+            const $textarea = $itemToAdd.find(
+              "textarea.node-elem-" + nodeCodigo
+            );
+
+            if ($textarea.length) {
+              function safeJsonParse(dataString, defaultValue = []) {
+                // Default para array
                 if (typeof dataString === "object" && dataString !== null) {
-                  // jQuery .data() pode já ter parseado
-                  return dataString;
+                  return Array.isArray(dataString) ? dataString : defaultValue;
                 }
                 if (
                   typeof dataString === "string" &&
                   dataString.trim() !== ""
                 ) {
                   try {
-                    return JSON.parse(dataString);
+                    const parsed = JSON.parse(dataString);
+                    return Array.isArray(parsed) ? parsed : defaultValue;
                   } catch (err) {
                     console.warn(
                       `Erro ao parsear JSON: "${dataString}". Usando valor padrão.`,
@@ -443,113 +753,138 @@ $(document).ready(function (e) {
                     return defaultValue;
                   }
                 }
-                return defaultValue; // Retorna default para undefined, null, ou string vazia
+                return defaultValue;
               }
 
-              const nodeInternalData = safeJsonParse($textarea.data("dados"));
-              const nodeInputsData = safeJsonParse($textarea.data("entrada")); // Para definir conexões de entrada
-              const nodeOutputsData = safeJsonParse($textarea.data("saida")); // Para definir conexões de saída
-              const nodeHtmlContent = $textarea.val(); // Seu $elemento['elemento'] (HTML ou tipo do nó)
+              const nodeInternalData = JSON.parse(
+                JSON.stringify($textarea.data("dados") || {})
+              );
+              const nodeInputsDataRaw = $textarea.data("entrada");
+              const nodeOutputsDataRaw = $textarea.data("saida");
+              const nodeHtmlContent = $textarea.val();
 
-              let posX = 100,
-                posY = 100; // Posições padrão
-              // Tenta obter uma posição mais inteligente se o editor Drawflow estiver acessível
-              if (
-                typeof editor !== "undefined" &&
-                editor &&
-                typeof editor.getCanvas === "function"
-              ) {
-                // Verifica se editor e um método existem
-                // Posição relativa ao centro da área visível do canvas
-                const canvasCenter = editor.getCanvasCenter(); // Supondo que exista um método assim
-                posX = Math.round(canvasCenter.x - 50); // Ajuste para centralizar o nó
-                posY = Math.round(canvasCenter.y - 20);
+              const nodeInputsArray = safeJsonParse(nodeInputsDataRaw);
+              const nodeOutputsArray = safeJsonParse(nodeOutputsDataRaw);
+
+              let posX = 150,
+                posY = 150;
+              if (focusedOutputElement && editor.node_selected) {
+                const sourceNodeRect =
+                  editor.node_selected.getBoundingClientRect();
+                const drawflowRect = editor.container.getBoundingClientRect();
+                // Posiciona o novo nó à direita do nó focado
+                posX =
+                  editor.node_selected.offsetLeft / editor.zoom +
+                  sourceNodeRect.width / editor.zoom +
+                  100; // Adiciona um espaçamento
+                posY = editor.node_selected.offsetTop / editor.zoom;
               } else if (
                 typeof editor !== "undefined" &&
                 editor &&
                 editor.canvas_x !== undefined
               ) {
-                // Fallback para usar canvas_x/y se getCanvasCenter não existir
-                posX = Math.round(
-                  editor.canvas_x +
-                    editor.container.clientWidth / 2 / editor.zoom -
-                    50
-                );
-                posY = Math.round(
-                  editor.canvas_y +
-                    editor.container.clientHeight / 2 / editor.zoom -
-                    20
-                );
+                posX =
+                  (-editor.canvas_x + editor.container.clientWidth / 2) /
+                    editor.zoom -
+                  80; // 80 é metade da largura do nó padrão
+                posY =
+                  (-editor.canvas_y + editor.container.clientHeight / 2) /
+                    editor.zoom -
+                  20; // 20 é metade da altura
               }
 
               console.groupCollapsed(
                 `[Enter Key] Preparando para adicionar nó: ${nodeCodigo}`
               );
-              console.log("Dados extraídos da paleta para o nó:", {
+              console.log("Dados extraídos:", {
                 codigo: nodeCodigo,
                 htmlContent: nodeHtmlContent,
                 internalData: nodeInternalData,
-                inputsStructure: nodeInputsData,
-                outputsStructure: nodeOutputsData,
+                inputsStructure: nodeInputsArray,
+                outputsStructure: nodeOutputsArray,
                 posX: posX,
                 posY: posY,
               });
               console.groupEnd();
 
-              // **AÇÃO CRÍTICA: Adicionar o nó ao Drawflow**
               if (
                 typeof editor !== "undefined" &&
                 typeof editor.addNode === "function"
               ) {
-                // **COMO OS DADOS SÃO USADOS EM editor.addNode:**
-                // A forma exata de usar nodeInputsData e nodeOutputsData para definir
-                // o número de inputs/outputs depende da sua implementação do Drawflow e da estrutura desses dados.
-                // Exemplo comum: se forem objetos, Object.keys(obj).length; se forem arrays, array.length.
-                // Se eles já contêm a estrutura de conexão detalhada, podem ser passados de outra forma.
-
-                let numInputs = 0;
-                if (nodeInputsData && typeof nodeInputsData === "object") {
-                  numInputs = Object.keys(nodeInputsData).length; // Exemplo: {"in_1":{...}, "in_2":{...}} -> 2 inputs
-                } else if (Array.isArray(nodeInputsData)) {
-                  numInputs = nodeInputsData.length;
-                }
-                // Adicione lógica similar para numOutputs se necessário
-
-                let numOutputs = 0;
-                if (nodeOutputsData && typeof nodeOutputsData === "object") {
-                  numOutputs = Object.keys(nodeOutputsData).length;
-                } else if (Array.isArray(nodeOutputsData)) {
-                  numOutputs = nodeOutputsData.length;
-                }
-
-                // Verifique a assinatura exata de editor.addNode na sua versão/implementação!
-                // editor.addNode(name, inputs, outputs, posx, posy, classNode, data, html, typenode);
-                editor.addNode(
-                  nodeCodigo, // Geralmente o nome/tipo que o Drawflow reconhece
-                  numInputs,
-                  numOutputs,
+                const newNodeId = editor.addNode(
+                  nodeCodigo,
+                  nodeInputsArray,
+                  nodeOutputsArray,
                   posX,
                   posY,
-                  nodeCodigo, // Classe CSS para o nó (pode ser o mesmo que o nome/código)
-                  nodeInternalData, // Os dados internos parseados
-                  nodeHtmlContent, // O HTML/conteúdo do nó (de $elemento['elemento'])
-                  false // `typenode`, se necessário. Se nodeHtmlContent for um nome de componente, pode ser false.
+                  nodeCodigo,
+                  nodeInternalData,
+                  nodeHtmlContent,
+                  false
                 );
                 console.log(
-                  `[Enter Key] Nó '${nodeCodigo}' foi enviado para editor.addNode.`
+                  `[Enter Key] Nó '${nodeCodigo}' adicionado com ID: ${newNodeId}.`
                 );
-                $searchInput.val("").trigger("input"); // Limpa a busca e re-filtra
+
+                if (newNodeId && focusedOutputElement && editor.node_selected) {
+                  const sourceNodeId = editor.node_selected.id.replace(
+                    "node-",
+                    ""
+                  );
+                  let outputClassForConnection = null;
+
+                  for (let cls of focusedOutputElement.classList) {
+                    if (cls.startsWith("output_") && cls !== "output-focused") {
+                      outputClassForConnection = cls;
+                      break;
+                    }
+                  }
+
+                  if (outputClassForConnection) {
+                    const newNodeData = editor.getNodeFromId(String(newNodeId));
+                    if (
+                      newNodeData &&
+                      newNodeData.inputs &&
+                      Object.keys(newNodeData.inputs).length > 0
+                    ) {
+                      const firstInputClass = Object.keys(
+                        newNodeData.inputs
+                      )[0];
+                      editor.addConnection(
+                        sourceNodeId,
+                        String(newNodeId),
+                        outputClassForConnection,
+                        firstInputClass
+                      );
+                      console.log(
+                        `Conectado: ${sourceNodeId}.${outputClassForConnection} -> ${newNodeId}.${firstInputClass}`
+                      );
+
+                      setTimeout(() => {
+                        alinharDrawflowHierarquicamente(editor);
+                      }, 250);
+                    } else {
+                      console.warn(
+                        `Novo nó ${newNodeId} não possui inputs ou não foi encontrado.`
+                      );
+                    }
+                  } else {
+                    console.warn(
+                      "Não foi possível determinar a outputClass do elemento focado para conexão."
+                    );
+                  }
+                  resetOutputFocus(); // Limpa o foco do output após a tentativa de conexão
+                }
+                $searchInput.val("").trigger("input");
               } else {
                 console.error(
-                  "[Enter Key] A variável 'editor' ou a função 'editor.addNode' não está definida no escopo global. Não é possível adicionar o nó programaticamente."
+                  "[Enter Key] A variável 'editor' ou a função 'editor.addNode' não está definida."
                 );
-                alert(
-                  "Erro ao tentar adicionar o nó: editor não configurado corretamente. Verifique o console."
-                );
+                alert("Erro ao tentar adicionar o nó. Verifique o console.");
               }
             } else {
               console.warn(
-                `[Enter Key] Textarea com dados para o nó ${nodeCodigo} não encontrada.`
+                `[Enter Key] Textarea com dados para ${nodeCodigo} não encontrada.`
               );
             }
           }
@@ -557,7 +892,108 @@ $(document).ready(function (e) {
       }
     }
   );
+
+  // Manipulador de keydown para navegação de outputs
+  document.addEventListener("keydown", function (event) {
+    if (!editor.node_selected) {
+      if (focusedOutputElement) {
+        // Se um output estava focado e o nó foi deselecionado
+        resetOutputFocus();
+      }
+      return;
+    }
+
+    const selectedNodeElement = editor.node_selected;
+    const outputs = Array.from(
+      selectedNodeElement.querySelectorAll(".outputs .output")
+    );
+
+    if (outputs.length === 0) {
+      if (focusedOutputElement) {
+        // Se estava focado e o nó não tem mais outputs (improvável, mas seguro)
+        resetOutputFocus();
+      }
+      return;
+    }
+
+    if (
+      event.ctrlKey &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    ) {
+      event.preventDefault();
+
+      // Se o nó selecionado mudou desde que o foco foi definido, ou se nenhum output está focado ainda
+      if (
+        !focusedOutputElement ||
+        !selectedNodeElement.contains(focusedOutputElement)
+      ) {
+        currentFocusedOutputIndex = -1; // Reseta para começar do zero no nó atual
+        if (focusedOutputElement)
+          focusedOutputElement.classList.remove("output-focused"); // Limpa visualmente o antigo
+        focusedOutputElement = null;
+      }
+
+      if (event.key === "ArrowUp") {
+        currentFocusedOutputIndex--;
+        if (currentFocusedOutputIndex < 0) {
+          currentFocusedOutputIndex = outputs.length - 1;
+        }
+      } else if (event.key === "ArrowDown") {
+        currentFocusedOutputIndex++;
+        if (currentFocusedOutputIndex >= outputs.length) {
+          currentFocusedOutputIndex = 0;
+        }
+      }
+      highlightOutput(outputs[currentFocusedOutputIndex], outputs);
+    }
+  });
+
+  // Modifique a função addNodeToDrawFlow para que ela use os arrays de entrada/saída corretamente
+  // e retorne o ID do nó criado se possível (ou adapte a lógica de conexão).
+  // A função `editor.addNode` já retorna o ID.
 });
+// Adicione estas variáveis no escopo global do seu diagrama.js
+var focusedOutputElement = null;
+var currentFocusedOutputIndex = -1; // -1 indica nenhum output focado
+
+// Função para resetar o foco do output
+function resetOutputFocus() {
+  if (focusedOutputElement) {
+    focusedOutputElement.classList.remove("output-focused");
+  }
+  focusedOutputElement = null;
+  currentFocusedOutputIndex = -1;
+
+  if (editor.node_selected) {
+    // Garante que nenhum output do nó ainda selecionado mantenha o estilo
+    const outputs = Array.from(
+      editor.node_selected.querySelectorAll(".outputs .output")
+    );
+    outputs.forEach((out) => out.classList.remove("output-focused"));
+  }
+}
+
+// Função para destacar um output específico
+function highlightOutput(outputElement, nodeOutputs) {
+  // Remove destaque anterior de todos os outputs do nó atual
+  if (nodeOutputs && nodeOutputs.length > 0) {
+    nodeOutputs.forEach((out) => out.classList.remove("output-focused"));
+  } else if (focusedOutputElement) {
+    // Se não tem nodeOutputs, limpa o foco global se existir
+    focusedOutputElement.classList.remove("output-focused");
+  }
+
+  if (outputElement) {
+    outputElement.classList.add("output-focused");
+    focusedOutputElement = outputElement;
+    // currentFocusedOutputIndex é atualizado pelo chamador (keydown handler)
+  } else {
+    // Se outputElement é null, significa que queremos limpar o foco.
+    focusedOutputElement = null;
+    // O chamador deve resetar currentFocusedOutputIndex
+  }
+}
+
 function openDrawer(nodeId) {
   if (!nodeId) return;
 
@@ -762,232 +1198,111 @@ function addNodeToDrawFlow(name, pos_x, pos_y, data = null) {
         (editor.precanvas.clientHeight * editor.zoom));
 
   let existe = $(".node-elem-" + name);
-  if (existe) {
-    let valor = existe.val();
-    let entrada = existe.data("entrada");
-    let saida = existe.data("saida");
-    let dados;
+  if (existe.length > 0) {
+    // Checa se o elemento existe
+    let valor = existe.val(); // HTML do nó
+    let dadosEntradaRaw = existe.data("entrada");
+    let dadosSaidaRaw = existe.data("saida");
+    let dadosParseados;
+
     if (data) {
-      dados = data;
+      // Se dados são passados diretamente (ex: ao colar)
+      dadosParseados = data;
     } else {
-      dados = existe.data("dados");
-      if (dados) {
-        dados = JSON.parse(JSON.stringify(dados));
-      } else {
-        dados = {};
+      // Pega do data-attribute
+      dadosParseados = existe.data("dados");
+      if (typeof dadosParseados === "string" && dadosParseados.trim() !== "") {
+        try {
+          dadosParseados = JSON.parse(dadosParseados);
+        } catch (e) {
+          console.warn("Erro ao parsear dados do nó:", e);
+          dadosParseados = {};
+        }
+      } else if (
+        typeof dadosParseados !== "object" ||
+        dadosParseados === null
+      ) {
+        dadosParseados = {};
       }
     }
 
-    editor.addNode(name, entrada, saida, pos_x, pos_y, "", dados, valor);
-    return;
+    function parseInputOutputData(rawData, defaultValue = []) {
+      if (Array.isArray(rawData)) return rawData;
+      if (typeof rawData === "string" && rawData.trim() !== "") {
+        try {
+          const parsed = JSON.parse(rawData);
+          return Array.isArray(parsed) ? parsed : defaultValue;
+        } catch (e) {
+          console.warn("Erro ao parsear dados de entrada/saida:", e, rawData);
+          return defaultValue;
+        }
+      }
+      if (typeof rawData === "number") {
+        // Se for um número, cria um array com essa quantidade de itens padrão
+        if (rawData > 0) {
+          // Para saídas, você pode querer um objeto padrão mais específico
+          let defaultItem =
+            arguments.length > 1 && arguments[0] === dadosSaidaRaw
+              ? { dados: { codigo: "default", personalizado: 0 } }
+              : {};
+          return new Array(rawData).fill(defaultItem);
+        }
+        return defaultValue;
+      }
+      return defaultValue;
+    }
+
+    let dadosEntradaArray = parseInputOutputData(dadosEntradaRaw);
+    let dadosSaidaArray = parseInputOutputData(dadosSaidaRaw);
+
+    const newNodeId = editor.addNode(
+      name,
+      dadosEntradaArray,
+      dadosSaidaArray,
+      pos_x,
+      pos_y,
+      name,
+      dadosParseados,
+      valor
+    );
+
+    // Lógica de conexão se um output estava focado (similar à da paleta)
+    if (newNodeId && focusedOutputElement && editor.node_selected) {
+      const sourceNodeId = editor.node_selected.id.replace("node-", "");
+      let outputClassForConnection = null;
+      for (let cls of focusedOutputElement.classList) {
+        if (cls.startsWith("output_") && cls !== "output-focused") {
+          outputClassForConnection = cls;
+          break;
+        }
+      }
+
+      if (outputClassForConnection) {
+        const newNodeData = editor.getNodeFromId(String(newNodeId));
+        if (
+          newNodeData &&
+          newNodeData.inputs &&
+          Object.keys(newNodeData.inputs).length > 0
+        ) {
+          const firstInputClass = Object.keys(newNodeData.inputs)[0];
+          editor.addConnection(
+            sourceNodeId,
+            String(newNodeId),
+            outputClassForConnection,
+            firstInputClass
+          );
+          setTimeout(() => alinharDrawflowHierarquicamente(editor), 250);
+        }
+      }
+      resetOutputFocus();
+    }
+    return; // Retorna após adicionar o nó
   }
-  alert("ops");
-  switch (name) {
-    case "facebook":
-      var facebook = `
-  <div>
-  <div class="title-box"><i class="fab fa-facebook"></i> Facebook Message</div>
-  </div>
-  `;
-      editor.addNode("facebook", 0, 1, pos_x, pos_y, "facebook", {}, facebook);
-      break;
-    case "slack":
-      var slackchat = `
-  <div>
-    <div class="title-box"><i class="fab fa-slack"></i> Slack chat message</div>
-  </div>
-  `;
-      editor.addNode("slack", 1, 0, pos_x, pos_y, "slack", {}, slackchat);
-      break;
-    case "github":
-      var githubtemplate = `
-  <div>
-    <div class="title-box"><i class="fab fa-github "></i> Github Stars</div>
-    <div class="box">
-      <p>Enter repository url</p>
-      <input type="text" df-name>
-    </div>
-  </div>
-  `;
-      editor.addNode(
-        "github",
-        0,
-        1,
-        pos_x,
-        pos_y,
-        "github",
-        {
-          name: "",
-        },
-        githubtemplate
-      );
-      break;
-    case "telegram":
-      var telegrambot = `
-  <div>
-    <div class="title-box"><i class="fab fa-telegram-plane"></i> Telegram bot</div>
-    <div class="box">
-      <p>Send to telegram</p>
-      <p>select channel</p>
-      <select df-channel>
-        <option value="channel_1">Channel 1</option>
-        <option value="channel_2">Channel 2</option>
-        <option value="channel_3">Channel 3</option>
-        <option value="channel_4">Channel 4</option>
-      </select>
-    </div>
-  </div>
-  `;
-      editor.addNode(
-        "telegram",
-        1,
-        0,
-        pos_x,
-        pos_y,
-        "telegram",
-        {
-          channel: "channel_3",
-        },
-        telegrambot
-      );
-      break;
-    case "aws":
-      var aws = `
-  <div>
-    <div class="title-box"><i class="fab fa-aws"></i> Aws Save </div>
-    <div class="box">
-      <p>Save in aws</p>
-      <input type="text" df-db-dbname placeholder="DB name"><br><br>
-      <input type="text" df-db-key placeholder="DB key">
-      <p>Output Log</p>
-    </div>
-  </div>
-  `;
-      editor.addNode(
-        "aws",
-        1,
-        1,
-        pos_x,
-        pos_y,
-        "aws",
-        {
-          db: {
-            dbname: "",
-            key: "",
-          },
-        },
-        aws
-      );
-      break;
-    case "log":
-      var log = `
-  <div>
-    <div class="title-box"><i class="fas fa-file-signature"></i> Save log file </div>
-  </div>
-  `;
-      editor.addNode("log", 1, 0, pos_x, pos_y, "log", {}, log);
-      break;
-    case "google":
-      var google = `
-  <div>
-    <div class="title-box"><i class="fab fa-google-drive"></i> Google Drive save </div>
-  </div>
-  `;
-      editor.addNode("google", 1, 0, pos_x, pos_y, "google", {}, google);
-      break;
-    case "email":
-      var email = `
-  <div>
-    <div class="title-box"><i class="fas fa-at"></i> Send Email </div>
-  </div>
-  `;
-      editor.addNode("email", 1, 0, pos_x, pos_y, "email", {}, email);
-      break;
 
-    case "template":
-      var template = `
-  <div>
-    <div class="title-box"><i class="fas fa-code"></i> Template</div>
-    <div class="box">
-      Ger Vars
-      <textarea df-template></textarea>
-      Output template with vars
-    </div>
-  </div>
-  `;
-      editor.addNode(
-        "template",
-        1,
-        1,
-        pos_x,
-        pos_y,
-        "template",
-        {
-          template: "Write your template",
-        },
-        template
-      );
-      break;
-    case "multiple":
-      var multiple = `
-  <div>
-    <div class="box">
-      Multiple!
-    </div>
-  </div>
-  `;
-      editor.addNode("multiple", 3, 4, pos_x, pos_y, "multiple", {}, multiple);
-      break;
-    case "personalized":
-      var personalized = `
-  <div>
-    Personalized
-  </div>
-  `;
-      editor.addNode(
-        "personalized",
-        1,
-        1,
-        pos_x,
-        pos_y,
-        "personalized",
-        {},
-        personalized
-      );
-      break;
-    case "dbclick":
-      var dbclick = `
-  <div>
-    <div class="title-box"><i class="fas fa-mouse"></i> Db Click</div>
-    <div class="box dbclickbox" ondblclick="showpopup(event)">
-      Db Click here
-      <div class="modal" style="display:none">
-        <div class="modal-content">
-          <span class="close" onclick="closemodal(event)">&times;</span>
-          Change your variable {name} !
-          <input type="text" df-name>
-        </div>
-
-      </div>
-    </div>
-  </div>
-  `;
-      editor.addNode(
-        "dbclick",
-        1,
-        1,
-        pos_x,
-        pos_y,
-        "dbclick",
-        {
-          name: "",
-        },
-        dbclick
-      );
-      break;
-
-    default:
-  }
+  // O switch case abaixo é um fallback se ".node-elem-" + name não for encontrado.
+  // Se sua paleta sempre cria os elementos ".node-elem-", este fallback pode não ser necessário.
+  // alert("Elemento de template para " + name + " não encontrado. Usando fallback.");
+  // switch (name) { ... seu switch case ... }
 }
 
 var transform = "";
@@ -1157,100 +1472,225 @@ function numerarNodesOrdenados(editor) {
   });
 }
 function alinharDrawflowHierarquicamente(editor) {
-  const data = editor.drawflow.drawflow.Home.data;
-  const visitados = new Set();
-  const posicoes = {};
-  const conexoesSalvas = [];
-
-  const horizontalSpacing = 300;
-  const verticalSpacing = 100;
-
-  // 1️⃣ 🔄 Salvar todas as conexões antes de remover
-  for (let nodeId in data) {
-    const node = data[nodeId];
-    for (let key in node.outputs) {
-      node.outputs[key].connections.forEach((conexao) => {
-        conexoesSalvas.push({
-          origem: nodeId,
-          output: key,
-          destino: conexao.node,
-          input: conexao.input,
-        });
-      });
-    }
+  const HOMEMODULE = editor.module;
+  if (
+    !editor.drawflow.drawflow[HOMEMODULE] ||
+    !editor.drawflow.drawflow[HOMEMODULE].data
+  ) {
+    console.error(
+      "Módulo ou dados do módulo não encontrados para alinhamento:",
+      HOMEMODULE
+    );
+    return;
   }
+  const data = editor.drawflow.drawflow[HOMEMODULE].data;
 
-  function distribuirFilhos(nodeId, nivel, yInicial) {
-    if (visitados.has(nodeId)) return yInicial;
+  const visitados = new Set();
+  const posicoesCalculadas = {};
+
+  const horizontalSpacing = 640; // <--- MODIFICADO
+  const verticalSpacing = 100;
+  const nodeHeightEstimate = 80;
+  const initialXOffset = 100; // <--- MODIFICADO
+  const initialYOffset = 50;
+
+  console.log(
+    "[Alinhar] Iniciando alinhamento. HSpacing:",
+    horizontalSpacing,
+    "VSpacing:",
+    verticalSpacing
+  );
+
+  function calcularPosicoesRecursivo(nodeId, nivel, suggestedY) {
+    if (visitados.has(nodeId) && posicoesCalculadas[nodeId]) {
+      const elCheck = document.getElementById(`node-${nodeId}`);
+      const hCheck = elCheck ? elCheck.offsetHeight : nodeHeightEstimate;
+      // console.log(`[Alinhar] Nó ${nodeId} já visitado e posicionado. Retornando Y-borda: ${posicoesCalculadas[nodeId].y + hCheck}`);
+      return posicoesCalculadas[nodeId].y + hCheck;
+    }
     visitados.add(nodeId);
+
     const node = data[nodeId];
-    if (!node) return yInicial;
+    if (!node) {
+      // console.log(`[Alinhar] Nó ${nodeId} não encontrado nos dados.`);
+      return suggestedY;
+    }
+
+    const nodeEl = document.getElementById(`node-${nodeId}`);
+    const nodeHeight = nodeEl
+      ? nodeEl.offsetHeight > 0
+        ? nodeEl.offsetHeight
+        : nodeHeightEstimate
+      : nodeHeightEstimate;
+
+    const posX = initialXOffset + nivel * horizontalSpacing;
+    posicoesCalculadas[nodeId] = { x: posX, y: suggestedY };
+    console.log(
+      `[Alinhar] Posicionando ${nodeId} (Nível ${nivel}): { x: ${posX}, y: ${suggestedY} }, Altura: ${nodeHeight}`
+    );
+
+    let currentYForNextSibling = suggestedY;
+    let maxBottomYForThisSubtree = suggestedY + nodeHeight;
 
     const filhos = [];
-
-    for (let key in node.outputs) {
-      const conexoes = node.outputs[key]?.connections || [];
-      conexoes.forEach((c) => filhos.push(c.node));
+    if (node.outputs) {
+      const filhoSet = new Set();
+      Object.values(node.outputs).forEach((output) => {
+        (output.connections || []).forEach((conn) => {
+          if (data[conn.node]) {
+            filhoSet.add(conn.node);
+          }
+        });
+      });
+      filhoSet.forEach((fId) => filhos.push(fId));
     }
 
-    const filhosOrdenados = filhos.sort((a, b) => {
-      const elA = document.querySelector(`#node-${a}`);
-      const elB = document.querySelector(`#node-${b}`);
-      if (!elA || !elB) return 0;
-      return elA.getBoundingClientRect().top - elB.getBoundingClientRect().top;
-    });
+    console.log(`[Alinhar] Nó ${nodeId} tem ${filhos.length} filhos:`, filhos);
 
-    const x = nivel * horizontalSpacing;
-    let yAtual = yInicial;
+    if (filhos.length > 0) {
+      let yParaPrimeiroFilho = suggestedY;
 
-    posicoes[nodeId] = { x, y: yAtual };
-    yAtual += verticalSpacing;
+      for (let i = 0; i < filhos.length; i++) {
+        const filhoId = filhos[i];
+        let yParaEsteFilho;
 
-    filhosOrdenados.forEach((filhoId) => {
-      yAtual = distribuirFilhos(filhoId, nivel + 1, yAtual);
-    });
+        if (i === 0) {
+          yParaEsteFilho = yParaPrimeiroFilho;
+        } else {
+          yParaEsteFilho = maxBottomYForThisSubtree + verticalSpacing;
+        }
 
-    return yAtual;
+        console.log(
+          `  [Alinhar] Chamando para filho ${filhoId} de ${nodeId} com suggestedY: ${yParaEsteFilho}`
+        );
+        const bottomYDoFilho = calcularPosicoesRecursivo(
+          filhoId,
+          nivel + 1,
+          yParaEsteFilho
+        );
+        maxBottomYForThisSubtree = Math.max(
+          maxBottomYForThisSubtree,
+          bottomYDoFilho
+        );
+      }
+    }
+
+    console.log(
+      `[Alinhar] Nó ${nodeId} concluído. Retornando maxBottomY: ${maxBottomYForThisSubtree}`
+    );
+    return maxBottomYForThisSubtree;
   }
 
-  // Encontrar nodes raiz
+  visitados.clear();
+
   const roots = Object.entries(data)
-    .filter(([_, node]) =>
-      Object.values(node.inputs).every((i) => i.connections.length === 0)
+    .filter(
+      ([, nodeDef]) =>
+        nodeDef &&
+        nodeDef.inputs &&
+        Object.values(nodeDef.inputs).every((i) => i.connections.length === 0)
     )
     .map(([id]) => id);
 
   const rootsOrdenados = roots.sort((a, b) => {
-    const elA = document.querySelector(`#node-${a}`);
-    const elB = document.querySelector(`#node-${b}`);
+    const elA = document.getElementById(`node-${a}`);
+    const elB = document.getElementById(`node-${b}`);
     if (!elA || !elB) return 0;
-    return elA.getBoundingClientRect().top - elB.getBoundingClientRect().top;
+    return (elA.offsetTop || 0) - (elB.offsetTop || 0);
   });
+  console.log("[Alinhar] Nós Raiz Ordenados:", rootsOrdenados);
 
-  let yInicial = 100;
+  let yGlobalAtual = initialYOffset;
   rootsOrdenados.forEach((rootId) => {
-    yInicial = distribuirFilhos(rootId, 0, yInicial);
+    console.log(
+      `[Alinhar] Processando árvore raiz ${rootId} com yGlobalAtual: ${yGlobalAtual}`
+    );
+    const bottomYDaArvore = calcularPosicoesRecursivo(rootId, 0, yGlobalAtual);
+    yGlobalAtual = bottomYDaArvore + verticalSpacing * 2;
   });
 
-  // 3️⃣ 📍 Atualizar posições dos nodes
-  for (let nodeId in posicoes) {
-    const { x, y } = posicoes[nodeId];
-    const nodeEl = document.getElementById(`node-${nodeId}`);
-    if (!nodeEl) continue;
-
-    nodeEl.style.left = `${x}px`;
-    nodeEl.style.top = `${y}px`;
-
-    editor.drawflow.drawflow.Home.data[nodeId].pos_x = x;
-    editor.drawflow.drawflow.Home.data[nodeId].pos_y = y;
+  console.log(
+    "[Alinhar] Posições Calculadas Finais:",
+    JSON.parse(JSON.stringify(posicoesCalculadas))
+  );
+  for (let nodeId in posicoesCalculadas) {
+    if (data[nodeId]) {
+      const { x, y } = posicoesCalculadas[nodeId];
+      const nodeElemento = document.getElementById(`node-${nodeId}`);
+      if (nodeElemento) {
+        nodeElemento.style.left = `${x}px`;
+        nodeElemento.style.top = `${y}px`;
+      }
+      editor.drawflow.drawflow[HOMEMODULE].data[nodeId].pos_x = x;
+      editor.drawflow.drawflow[HOMEMODULE].data[nodeId].pos_y = y;
+    }
   }
 
-  // 4️⃣ 🔗 Restaurar todas as conexões
-  setTimeout(() => {
-    conexoesSalvas.forEach(({ origem, output, destino, input }) => {
-      editor.addConnection(origem, destino, output, input);
-    });
-  }, 200); // Pequeno delay para evitar conflitos de renderização
+  Object.keys(data).forEach((nodeId) => {
+    if (data[nodeId]) {
+      editor.updateConnectionNodes("node-" + nodeId);
+    }
+  });
+  console.log(
+    "[Alinhar] Alinhamento hierárquico concluído e conexões atualizadas."
+  );
+}
+
+function focusViewOnNode(nodeElementToFocus, editorInstance) {
+  if (
+    !nodeElementToFocus ||
+    !editorInstance ||
+    !editorInstance.container ||
+    !editorInstance.precanvas
+  ) {
+    console.warn(
+      "focusViewOnNode: Elemento do nó ou instância do editor/container/precanvas inválido.",
+      nodeElementToFocus,
+      editorInstance
+    );
+    return;
+  }
+
+  // Assegura que as dimensões sejam lidas após qualquer possível atualização do DOM
+  // Um setTimeout pequeno pode ajudar se houver problemas de timing com offsetWidth/Height
+  // setTimeout(() => {
+  const nodeCanvasX = nodeElementToFocus.offsetLeft;
+  const nodeCanvasY = nodeElementToFocus.offsetTop;
+
+  // Usa uma estimativa se offsetWidth/Height não estiverem disponíveis imediatamente
+  // (ex: nó recém-adicionado e DOM não totalmente atualizado)
+  const nodeWidth =
+    nodeElementToFocus.offsetWidth > 0 ? nodeElementToFocus.offsetWidth : 160; // Largura padrão como fallback
+  const nodeHeight =
+    nodeElementToFocus.offsetHeight > 0 ? nodeElementToFocus.offsetHeight : 80; // Altura padrão como fallback
+
+  const nodeWidthZoomed = nodeWidth * editorInstance.zoom;
+  const nodeHeightZoomed = nodeHeight * editorInstance.zoom;
+
+  const containerWidth = editorInstance.container.clientWidth;
+  const containerHeight = editorInstance.container.clientHeight;
+
+  // Posição X desejada para o nó no viewport (e.g., 25% da largura do container, da esquerda)
+  const targetViewportX = containerWidth * 0.25;
+  // Posição Y desejada para o centro vertical do nó no viewport (centro vertical do container)
+  const targetViewportY = containerHeight / 2;
+
+  let new_canvas_x = targetViewportX - nodeCanvasX * editorInstance.zoom;
+  let new_canvas_y =
+    targetViewportY - nodeCanvasY * editorInstance.zoom - nodeHeightZoomed / 2;
+
+  editorInstance.canvas_x = new_canvas_x;
+  editorInstance.canvas_y = new_canvas_y;
+
+  editorInstance.precanvas.style.transform = `translate(${editorInstance.canvas_x}px, ${editorInstance.canvas_y}px) scale(${editorInstance.zoom})`;
+  editorInstance.dispatch("translate", {
+    x: editorInstance.canvas_x,
+    y: editorInstance.canvas_y,
+  });
+  console.log(
+    `Visão focada no nó ${nodeElementToFocus.id}. Canvas X: ${editorInstance.canvas_x}, Canvas Y: ${editorInstance.canvas_y}`
+  );
+  // }, 0); // Delay 0 para enfileirar após o fluxo atual, ou um valor maior se necessário
 }
 let undoStack = [];
 

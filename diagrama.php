@@ -713,6 +713,14 @@
       scrollbar-width: thin;
       scrollbar-color: var(--galaxy-accent-cyan, #00ffff) rgba(0, 0, 0, 0.2);
     }
+
+    .drawflow .drawflow-node .output.output-focused {
+      border: 3px solid #ffcc00;
+      /* Amarelo para destaque */
+      box-shadow: 0 0 10px #ffcc00;
+      background-color: #fff3cd;
+      /* Um fundo levemente amarelado */
+    }
   </style>
 
   <div class="offcanvas offcanvas-end" tabindex="-1" id="global-editor-fullscreen" style="z-index:9999; width:100vw;">
