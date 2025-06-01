@@ -203,76 +203,103 @@ $(document).ready(function (e) {
   editor.on("nodeRemoved", () => numerarNodesOrdenados(editor));
   editor.on("connectionCreated", () => numerarNodesOrdenados(editor));
   editor.on("connectionRemoved", () => numerarNodesOrdenados(editor));
-
   editor.on("nodeSelected", function (id) {
-    console.log("Node selected " + id);
-    resetOutputFocus(); // Limpa foco de output anterior
-    resetInputFocus(); // Limpa foco de input anterior
+    console.log("(on.nodeSelected) - Evento disparado para ID: " + id);
+    resetOutputFocus();
+    resetInputFocus();
 
-    if (!editor.node_selected) {
-      // Se o nó foi deselecionado (id pode ser de um nó que não é mais o editor.node_selected)
-      return;
-    }
+    // Adicionado setTimeout para dar tempo ao DOM e aos dados do editor para estabilizar
+    setTimeout(() => {
+      if (!editor.node_selected || editor.node_selected.id !== "node-" + id) {
+        console.log(
+          "(on.nodeSelected - setTimeout) - Nó não corresponde mais ou não está selecionado."
+        );
+        return;
+      }
 
-    const selectedNodeElement = editor.node_selected; // Garante que estamos usando o nó atualmente selecionado
-    const currentId = selectedNodeElement.id.replace("node-", ""); // Pega o ID do nó realmente selecionado
-    const outputs = Array.from(
-      selectedNodeElement.querySelectorAll(".outputs .output")
-    );
+      const selectedNodeElement = editor.node_selected;
+      const currentSelectedId = selectedNodeElement.id.replace("node-", ""); // Usa o ID do nó realmente selecionado
+      console.log(
+        "(on.nodeSelected - setTimeout) - Elemento selecionado:",
+        selectedNodeElement.id
+      );
 
-    if (outputs.length > 0) {
-      let outputToFocus = null;
-      let indexOfOutputToFocus = -1;
-      const nodeData = editor.getNodeFromId(currentId);
+      const outputs = Array.from(
+        selectedNodeElement.querySelectorAll(".outputs .output")
+      );
+      console.log(
+        "(on.nodeSelected - setTimeout) - Outputs encontrados no DOM:",
+        outputs.length
+      );
 
-      if (nodeData && nodeData.outputs) {
-        // Verifica se nodeData e nodeData.outputs existem
-        // Tenta encontrar um output com conexões existentes
-        for (let i = 0; i < outputs.length; i++) {
-          const outputElement = outputs[i];
-          let outputClass = null;
-          // Pega a classe do output (ex: output_1)
-          for (let cls of outputElement.classList) {
-            if (cls.startsWith("output_") && cls !== "output-focused") {
-              // Garante que não pega a classe de foco
-              outputClass = cls;
-              break;
+      if (outputs.length > 0) {
+        let outputToFocus = null;
+        let indexOfOutputToFocus = -1;
+        const nodeData = editor.getNodeFromId(currentSelectedId);
+
+        if (nodeData && nodeData.outputs) {
+          // Prioridade 1: Tenta encontrar o primeiro output COM conexões
+          for (let i = 0; i < outputs.length; i++) {
+            const outputElement = outputs[i];
+            let outputClass = null;
+            // Pega a classe do output (ex: output_1) de forma mais robusta
+            for (let cls of outputElement.classList) {
+              if (cls.startsWith("output_") && cls !== "output-focused") {
+                outputClass = cls;
+                break;
+              }
+            }
+
+            if (
+              outputClass &&
+              nodeData.outputs[outputClass] &&
+              nodeData.outputs[outputClass].connections &&
+              nodeData.outputs[outputClass].connections.length > 0
+            ) {
+              outputToFocus = outputElement;
+              indexOfOutputToFocus = i;
+              console.log(
+                "(on.nodeSelected - setTimeout) - Prioridade 1: Focando output COM conexão:",
+                outputClass
+              );
+              break; // Encontrou o primeiro com conexão, para aqui
             }
           }
-          if (
-            outputClass &&
-            nodeData.outputs[outputClass] &&
-            nodeData.outputs[outputClass].connections.length > 0
-          ) {
-            outputToFocus = outputElement;
-            indexOfOutputToFocus = i;
-            console.log("Focando output com conexão existente:", outputClass);
-            break;
-          }
+        } else {
+          console.warn(
+            "(on.nodeSelected - setTimeout) - Dados do nó ou outputs não encontrados para o nó selecionado:",
+            currentSelectedId
+          );
+        }
+
+        // Prioridade 2: Se nenhum output com conexão foi encontrado (ou erro nos dados), foca o primeiro output da lista
+        if (!outputToFocus && outputs.length > 0) {
+          outputToFocus = outputs[0];
+          indexOfOutputToFocus = 0;
+          console.log(
+            "(on.nodeSelected - setTimeout) - Prioridade 2: Nenhum output com conexão (ou erro nos dados), focando o primeiro output da lista."
+          );
+        }
+
+        // Aplica o foco se um output foi determinado
+        if (outputToFocus) {
+          currentFocusedOutputIndex = indexOfOutputToFocus;
+          highlightOutput(outputToFocus, outputs); // Foca o output determinado
+          console.log(
+            "(on.nodeSelected - setTimeout) - Output focado automaticamente:",
+            outputToFocus.classList
+          );
+        } else {
+          console.log(
+            "(on.nodeSelected - setTimeout) - Nenhum output para focar (lista de outputs vazia após verificações)."
+          );
         }
       } else {
-        console.warn(
-          "Dados do nó ou outputs não encontrados para o nó selecionado:",
-          currentId
-        );
-      }
-
-      // Se nenhum output com conexão foi encontrado (ou dados do nó falharam), foca o primeiro output da lista
-      if (!outputToFocus && outputs.length > 0) {
-        // Adiciona verificação se outputs.length > 0 novamente
-        outputToFocus = outputs[0];
-        indexOfOutputToFocus = 0;
         console.log(
-          "Nenhum output com conexão (ou erro nos dados), focando o primeiro output da lista."
+          "(on.nodeSelected - setTimeout) - Nó selecionado não possui outputs para foco automático."
         );
       }
-
-      if (outputToFocus) {
-        currentFocusedOutputIndex = indexOfOutputToFocus;
-        highlightOutput(outputToFocus, outputs);
-        console.log("Output focado automaticamente:", outputToFocus.classList);
-      }
-    }
+    }, 200); // Delay de 10ms, pode ser 0 ou ajustado se necessário
   });
 
   editor.on("moduleCreated", function (name) {
@@ -749,6 +776,7 @@ $(document).ready(function (e) {
   editor.on("nodeSelected", function (id) {
     // console.log("Node selected " + id);
     resetOutputFocus(); // Reseta o foco ao selecionar um novo nó
+    resetInputFocus(); // <--- GARANTA QUE ESTA LINHA ESTEJA AQUI
   });
 
   editor.on("nodeUnselected", function () {
@@ -960,227 +988,558 @@ $(document).ready(function (e) {
       }
     }
   );
-
-  // Manipulador de keydown para navegação de outputs
   document.addEventListener("keydown", function (event) {
-    if (!editor.node_selected) {
-      if (focusedOutputElement) {
-        // Se um output estava focado e o nó foi deselecionado
-        resetOutputFocus();
+    const activeElement = document.activeElement;
+    const INPUT_LIKE_TAGS = ["input", "textarea", "select"];
+    const drawflowContainer = document.getElementById("drawflow");
+
+    // 1. Se o foco está em um campo de texto, geralmente não queremos que as setas do Drawflow atuem.
+    if (
+      activeElement &&
+      (INPUT_LIKE_TAGS.includes(activeElement.tagName.toLowerCase()) ||
+        activeElement.hasAttribute("contenteditable"))
+    ) {
+      // Permite combinações de edição padrão
+      if (
+        event.ctrlKey &&
+        ["c", "v", "x", "z", "a"].includes(event.key.toLowerCase())
+      ) {
+        return;
       }
-      return;
+      // Permite Shift+Setas para seleção de texto
+      if (
+        event.shiftKey &&
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)
+      ) {
+        return;
+      }
+      // Se for uma tecla de seta sozinha (sem Ctrl/Shift/Alt/Meta) E o foco não for o input da paleta,
+      // permite a navegação DENTRO do input.
+      if (
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+          event.key
+        ) &&
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        if (activeElement.id !== "palette-search-input-injected") {
+          // Paleta tem seu próprio handler de Enter
+          return;
+        }
+      }
+      // Se for qualquer outra tecla (não Ctrl, não Meta, não Alt, não setas, etc.)
+      // e não for Enter na paleta, assume-se digitação.
+      if (
+        !(
+          event.ctrlKey ||
+          event.metaKey ||
+          event.altKey ||
+          [
+            "ArrowUp",
+            "ArrowDown",
+            "ArrowLeft",
+            "ArrowRight",
+            "Tab",
+            "Escape",
+            "Shift",
+            "Control",
+            "Alt",
+            "Meta",
+          ].includes(event.key) ||
+          event.key.startsWith("F") ||
+          (activeElement.id === "palette-search-input-injected" &&
+            event.key === "Enter")
+        )
+      ) {
+        return;
+      }
     }
 
-    const selectedNodeElement = editor.node_selected;
-    const outputs = Array.from(
-      selectedNodeElement.querySelectorAll(".outputs .output")
-    );
+    // Se nenhum nó estiver selecionado, a maioria das navegações abaixo não se aplica.
+    // No entanto, algumas lógicas de Ctrl+C/V/Delete podem funcionar sem um nó selecionado (ex: colar).
+    // As verificações específicas `if (!editor.node_selected)` estão dentro de cada bloco de navegação.
 
-    if (outputs.length === 0) {
-      if (focusedOutputElement) {
-        // Se estava focado e o nó não tem mais outputs (improvável, mas seguro)
-        resetOutputFocus();
-      }
-      return;
-    }
+    let eventHandled = false; // Flag para indicar se o evento foi tratado por uma das lógicas Drawflow
 
+    // --- LÓGICA DE NAVEGAÇÃO DRAWFLOW ---
+
+    // A. Navegação Interna de Conectores (Ctrl + Seta Cima/Baixo)
     if (
       event.ctrlKey &&
+      !event.shiftKey &&
       (event.key === "ArrowUp" || event.key === "ArrowDown")
     ) {
-      event.preventDefault();
-
-      // Se o nó selecionado mudou desde que o foco foi definido, ou se nenhum output está focado ainda
-      if (
-        !focusedOutputElement ||
-        !selectedNodeElement.contains(focusedOutputElement)
-      ) {
-        currentFocusedOutputIndex = -1; // Reseta para começar do zero no nó atual
-        if (focusedOutputElement)
-          focusedOutputElement.classList.remove("output-focused"); // Limpa visualmente o antigo
-        focusedOutputElement = null;
-      }
-
-      if (event.key === "ArrowUp") {
-        currentFocusedOutputIndex--;
-        if (currentFocusedOutputIndex < 0) {
-          currentFocusedOutputIndex = outputs.length - 1;
-        }
-      } else if (event.key === "ArrowDown") {
-        currentFocusedOutputIndex++;
-        if (currentFocusedOutputIndex >= outputs.length) {
-          currentFocusedOutputIndex = 0;
-        }
-      }
-      highlightOutput(outputs[currentFocusedOutputIndex], outputs);
-    } else if (
-      event.key === "ArrowRight" &&
-      event.ctrlKey &&
-      !event.shiftKey &&
-      !event.altKey
-    ) {
-      if (editor.node_selected && focusedOutputElement) {
-        // Só ativa se um nó estiver selecionado E um output dele estiver focado
+      if (editor.node_selected) {
         event.preventDefault();
-        console.log("Seta para Direita pressionada com output focado.");
+        eventHandled = true;
+        const selectedNodeElement = editor.node_selected;
+        let navigated = false;
 
-        const parentNodeId = editor.node_selected.id.replace("node-", "");
-        let outputClassForNavigation = null;
-        // Encontra a classe do output focado, ex: "output_1"
-        for (let cls of focusedOutputElement.classList) {
-          if (cls.startsWith("output_") && cls !== "output-focused") {
-            outputClassForNavigation = cls;
-            break;
-          }
-        }
-
-        if (!outputClassForNavigation) {
-          console.warn(
-            "Não foi possível determinar a classe do output focado para navegação."
-          );
-          return; // Sai da função se não encontrar a classe do output
-        }
-
-        const parentNodeData = editor.getNodeFromId(parentNodeId);
         if (
-          !parentNodeData ||
-          !parentNodeData.outputs ||
-          !parentNodeData.outputs[outputClassForNavigation]
+          focusedOutputElement &&
+          selectedNodeElement.contains(focusedOutputElement)
         ) {
-          console.warn(
-            "Dados do nó pai ou output específico não encontrados para navegação:",
-            parentNodeId,
-            outputClassForNavigation
+          const outputs = Array.from(
+            selectedNodeElement.querySelectorAll(".outputs .output")
           );
-          return; // Sai se não encontrar dados do output
-        }
-
-        const outputConnections =
-          parentNodeData.outputs[outputClassForNavigation].connections;
-
-        if (outputConnections && outputConnections.length > 0) {
-          const firstConnection = outputConnections[0]; // Segue a primeira conexão encontrada
-          const childNodeIdString = firstConnection.node; // ID do nó filho (já é string)
-
-          const childNodeElement = document.getElementById(
-            "node-" + childNodeIdString
-          );
-
-          if (childNodeElement) {
-            // 1. Selecionar o nó filho.
-            // O evento 'nodeSelected' (disparado abaixo) cuidará de chamar resetOutputFocus.
-            if (editor.node_selected) {
-              editor.node_selected.classList.remove("selected");
-            }
-            childNodeElement.classList.add("selected");
-            editor.node_selected = childNodeElement; // Define o novo nó como selecionado
-            editor.dispatch("nodeSelected", childNodeIdString); // Dispara o evento
-            console.log(`Navegou para nó filho: ${childNodeIdString}`);
-
-            // 2. Mover a visão para o nó filho recém-selecionado
-            // O setTimeout ajuda a garantir que o DOM e a seleção estejam completamente atualizados.
-            setTimeout(() => {
-              focusViewOnNode(childNodeElement, editor);
-            }, 50); // Pequeno delay, ajuste se necessário
-          } else {
-            console.warn(
-              `Nó filho com ID 'node-${childNodeIdString}' não encontrado no DOM.`
+          if (outputs.length > 0) {
+            currentFocusedOutputIndex =
+              (event.key === "ArrowUp"
+                ? currentFocusedOutputIndex - 1 + outputs.length
+                : currentFocusedOutputIndex + 1) % outputs.length;
+            highlightOutput(outputs[currentFocusedOutputIndex], outputs);
+            console.log(
+              "Output focado (Ctrl+Seta):",
+              outputs[currentFocusedOutputIndex]?.classList
             );
+            navigated = true;
           }
-        } else {
-          console.log("Output focado não tem conexões para seguir.");
-          // Opcional: algum feedback visual ou sonoro indicando que não há para onde ir.
+        } else if (
+          focusedInputElement &&
+          selectedNodeElement.contains(focusedInputElement)
+        ) {
+          const inputs = Array.from(
+            selectedNodeElement.querySelectorAll(".inputs .input")
+          );
+          if (inputs.length > 0) {
+            currentFocusedInputIndex =
+              (event.key === "ArrowUp"
+                ? currentFocusedInputIndex - 1 + inputs.length
+                : currentFocusedInputIndex + 1) % inputs.length;
+            highlightInput(inputs[currentFocusedInputIndex], inputs);
+            console.log(
+              "Input focado (Ctrl+Seta):",
+              inputs[currentFocusedInputIndex]?.classList
+            );
+            navigated = true;
+          }
         }
+
+        if (!navigated) {
+          // Se nada estava focado, tenta focar o primeiro output
+          const outputs = Array.from(
+            selectedNodeElement.querySelectorAll(".outputs .output")
+          );
+          if (outputs.length > 0) {
+            if (focusedInputElement) resetInputFocus();
+            currentFocusedOutputIndex = 0;
+            highlightOutput(outputs[currentFocusedOutputIndex], outputs);
+            console.log(
+              "Output inicial focado (Ctrl+Seta):",
+              outputs[currentFocusedOutputIndex]?.classList
+            );
+          } else {
+            const inputs = Array.from(
+              selectedNodeElement.querySelectorAll(".inputs .input")
+            );
+            if (inputs.length > 0) {
+              if (focusedOutputElement) resetOutputFocus();
+              currentFocusedInputIndex = 0;
+              highlightInput(inputs[currentFocusedInputIndex], inputs);
+              console.log(
+                "Input inicial focado (Ctrl+Seta, sem outputs):",
+                inputs[currentFocusedInputIndex]?.classList
+              );
+            }
+          }
+        }
+      } else {
+        if (focusedOutputElement) resetOutputFocus();
+        if (focusedInputElement) resetInputFocus();
       }
-    } // Dentro de document.addEventListener('keydown', function(event) { ... });
-    // ... (lógica existente para Ctrl+Setas Output, Seta para Direita, etc.)
-
-    // NOVO: Navegação entre INPUTS com Ctrl+Shift+Setas Cima/Baixo
-
-    // NOVO: Navegação para o nó PAI com Seta para Esquerda
+    }
+    // B. Troca entre Inputs/Outputs e Navegação entre Nós Conectados (Ctrl + Shift + Setas Laterais)
     else if (
-      event.key === "ArrowLeft" &&
       event.ctrlKey &&
+      event.shiftKey &&
+      (event.key === "ArrowLeft" || event.key === "ArrowRight")
+    ) {
+      if (editor.node_selected) {
+        event.preventDefault();
+        eventHandled = true;
+        const selectedNodeElement = editor.node_selected;
+        const currentNodeId = selectedNodeElement.id.replace("node-", "");
+        const currentNodeData = editor.getNodeFromId(currentNodeId);
+        const inputs = Array.from(
+          selectedNodeElement.querySelectorAll(".inputs .input")
+        );
+        const outputs = Array.from(
+          selectedNodeElement.querySelectorAll(".outputs .output")
+        );
+
+        if (event.key === "ArrowLeft") {
+          if (
+            focusedOutputElement &&
+            selectedNodeElement.contains(focusedOutputElement) &&
+            inputs.length > 0
+          ) {
+            resetOutputFocus();
+            currentFocusedInputIndex = inputs.length - 1;
+            highlightInput(inputs[currentFocusedInputIndex], inputs);
+            console.log(
+              "Movido para último Input (Ctrl+Shift+Left):",
+              inputs[currentFocusedInputIndex]?.classList
+            );
+          } else if (
+            focusedInputElement &&
+            selectedNodeElement.contains(focusedInputElement)
+          ) {
+            let inputClassNav = null;
+            for (let cls of focusedInputElement.classList) {
+              if (cls.startsWith("input_") && cls !== "input-focused") {
+                inputClassNav = cls;
+                break;
+              }
+            }
+            if (
+              inputClassNav &&
+              currentNodeData.inputs[inputClassNav]?.connections.length > 0
+            ) {
+              const conn = currentNodeData.inputs[inputClassNav].connections[0];
+              const parentId = conn.node;
+              const parentOutputClass = conn.input;
+              const parentNodeEl = document.getElementById("node-" + parentId);
+              if (parentNodeEl) {
+                selectedNodeElement.classList.remove("selected");
+                parentNodeEl.classList.add("selected");
+                editor.node_selected = parentNodeEl;
+                editor.dispatch("nodeSelected", parentId);
+                const parentOutputs = Array.from(
+                  parentNodeEl.querySelectorAll(".outputs .output")
+                );
+                let outputToFocus = null;
+                let outputIdx = -1;
+                for (let i = 0; i < parentOutputs.length; i++) {
+                  if (parentOutputs[i].classList.contains(parentOutputClass)) {
+                    outputToFocus = parentOutputs[i];
+                    outputIdx = i;
+                    break;
+                  }
+                }
+                if (outputToFocus) {
+                  currentFocusedOutputIndex = outputIdx;
+                  highlightOutput(outputToFocus, parentOutputs);
+                  console.log(
+                    `Movido para Pai ${parentId}, Output ${parentOutputClass} focado (Ctrl+Shift+Left)`
+                  );
+                } else {
+                  console.warn(
+                    `Ctrl+Shift+Left: Output ${parentOutputClass} não encontrado no pai ${parentId}.`
+                  );
+                }
+                setTimeout(() => {
+                  if (editor.node_selected === parentNodeEl)
+                    focusViewOnNode(parentNodeEl, editor);
+                }, 50);
+              }
+            }
+          }
+        } else if (event.key === "ArrowRight") {
+          if (
+            focusedInputElement &&
+            selectedNodeElement.contains(focusedInputElement) &&
+            outputs.length > 0
+          ) {
+            resetInputFocus();
+            currentFocusedOutputIndex = 0;
+            highlightOutput(outputs[currentFocusedOutputIndex], outputs);
+            console.log(
+              "Movido para primeiro Output (Ctrl+Shift+Right):",
+              outputs[currentFocusedOutputIndex]?.classList
+            );
+          } else if (
+            focusedOutputElement &&
+            selectedNodeElement.contains(focusedOutputElement)
+          ) {
+            let outputClassNav = null;
+            for (let cls of focusedOutputElement.classList) {
+              if (cls.startsWith("output_") && cls !== "output-focused") {
+                outputClassNav = cls;
+                break;
+              }
+            }
+            if (
+              outputClassNav &&
+              currentNodeData.outputs[outputClassNav]?.connections.length > 0
+            ) {
+              const conn =
+                currentNodeData.outputs[outputClassNav].connections[0];
+              const childId = conn.node;
+              const childInputClass = conn.output;
+              const childNodeEl = document.getElementById("node-" + childId);
+              if (childNodeEl) {
+                selectedNodeElement.classList.remove("selected");
+                childNodeEl.classList.add("selected");
+                editor.node_selected = childNodeEl;
+                editor.dispatch("nodeSelected", childId);
+                const childInputs = Array.from(
+                  childNodeEl.querySelectorAll(".inputs .input")
+                );
+                let inputToFocus = null;
+                let inputIdx = -1;
+                for (let i = 0; i < childInputs.length; i++) {
+                  if (childInputs[i].classList.contains(childInputClass)) {
+                    inputToFocus = childInputs[i];
+                    inputIdx = i;
+                    break;
+                  }
+                }
+                if (inputToFocus) {
+                  currentFocusedInputIndex = inputIdx;
+                  highlightInput(inputToFocus, childInputs);
+                  console.log(
+                    `Movido para Filho ${childId}, Input ${childInputClass} focado (Ctrl+Shift+Right)`
+                  );
+                } else {
+                  console.warn(
+                    `Ctrl+Shift+Right: Input ${childInputClass} não encontrado no filho ${childId}.`
+                  );
+                }
+                setTimeout(() => {
+                  if (editor.node_selected === childNodeEl)
+                    focusViewOnNode(childNodeEl, editor);
+                }, 50);
+              }
+            }
+          }
+        }
+      }
+    }
+    // C. Navegação Livre entre Nós Conectados (Setas Laterais Sozinhas)
+    else if (
+      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+      !event.ctrlKey &&
       !event.shiftKey &&
       !event.altKey
     ) {
-      if (editor.node_selected && focusedInputElement) {
-        // Só ativa se um nó estiver selecionado E um INPUT dele estiver focado
+      if (editor.node_selected) {
         event.preventDefault();
-        console.log("Seta para Esquerda pressionada com input focado.");
-
-        const currentNodeId = editor.node_selected.id.replace("node-", "");
-        let inputClassForNavigation = null;
-        for (let cls of focusedInputElement.classList) {
-          if (cls.startsWith("input_") && cls !== "input-focused") {
-            inputClassForNavigation = cls;
-            break;
-          }
-        }
-
-        if (!inputClassForNavigation) {
-          console.warn(
-            "Não foi possível determinar a classe do input focado para navegação para trás."
-          );
-          return;
-        }
-
+        eventHandled = true;
+        const selectedNodeElement = editor.node_selected;
+        const currentNodeId = selectedNodeElement.id.replace("node-", "");
         const currentNodeData = editor.getNodeFromId(currentNodeId);
-        if (
-          !currentNodeData ||
-          !currentNodeData.inputs ||
-          !currentNodeData.inputs[inputClassForNavigation]
-        ) {
-          console.warn(
-            "Dados do nó atual ou input específico não encontrados para navegação para trás:",
-            currentNodeId,
-            inputClassForNavigation
-          );
-          return;
-        }
+        let targetNodeElement = null;
+        let targetNodeId = null;
 
-        const inputConnections =
-          currentNodeData.inputs[inputClassForNavigation].connections;
-
-        if (inputConnections && inputConnections.length > 0) {
-          const firstConnection = inputConnections[0]; // Geralmente um input tem uma conexão de entrada
-          const parentNodeIdString = firstConnection.node; // ID do nó pai
-          // const parentOutputClass = firstConnection.input; // Classe do output no nó pai que se conecta a este input
-
-          const parentNodeElement = document.getElementById(
-            "node-" + parentNodeIdString
-          );
-
-          if (parentNodeElement) {
-            // Selecionar o nó pai.
-            // O evento 'nodeSelected' (disparado abaixo) cuidará de chamar resetInputFocus e resetOutputFocus,
-            // e também tentará focar um output no parentNodeElement.
-            if (editor.node_selected) {
-              editor.node_selected.classList.remove("selected");
+        if (event.key === "ArrowRight") {
+          console.log("Seta Direita (livre) pressionada.");
+          if (
+            focusedOutputElement &&
+            selectedNodeElement.contains(focusedOutputElement)
+          ) {
+            let outputClassNav = null;
+            for (let cls of focusedOutputElement.classList) {
+              if (cls.startsWith("output_") && cls !== "output-focused") {
+                outputClassNav = cls;
+                break;
+              }
             }
-            parentNodeElement.classList.add("selected");
-            editor.node_selected = parentNodeElement;
-            editor.dispatch("nodeSelected", parentNodeIdString);
-            console.log(`Navegou para nó pai: ${parentNodeIdString}`);
-
-            setTimeout(() => {
-              focusViewOnNode(parentNodeElement, editor);
-            }, 50);
+            if (
+              outputClassNav &&
+              currentNodeData.outputs[outputClassNav]?.connections.length > 0
+            ) {
+              const conn =
+                currentNodeData.outputs[outputClassNav].connections[0];
+              targetNodeId = conn.node;
+              targetNodeElement = document.getElementById(
+                "node-" + targetNodeId
+              );
+              console.log("Seguindo ramo para filho:", targetNodeId);
+            } else {
+              console.log("Seta Direita (livre): Output focado sem conexão.");
+            }
           } else {
-            console.warn(
-              `Nó pai com ID 'node-${parentNodeIdString}' não encontrado no DOM.`
+            console.log(
+              "Seta Direita (livre): Nenhum output focado para seguir ramo. Implementar busca por nó próximo à direita se necessário."
             );
           }
+        } else if (event.key === "ArrowLeft") {
+          console.log("Seta Esquerda (livre) pressionada.");
+          if (
+            focusedInputElement &&
+            selectedNodeElement.contains(focusedInputElement)
+          ) {
+            let inputClassNav = null;
+            for (let cls of focusedInputElement.classList) {
+              if (cls.startsWith("input_") && cls !== "input-focused") {
+                inputClassNav = cls;
+                break;
+              }
+            }
+            if (
+              inputClassNav &&
+              currentNodeData.inputs[inputClassNav]?.connections.length > 0
+            ) {
+              const conn = currentNodeData.inputs[inputClassNav].connections[0];
+              targetNodeId = conn.node;
+              const parentOutputClass = conn.input;
+              targetNodeElement = document.getElementById(
+                "node-" + targetNodeId
+              );
+              console.log("Seguindo ramo para pai:", targetNodeId);
+              if (targetNodeElement) {
+                selectedNodeElement.classList.remove("selected");
+                targetNodeElement.classList.add("selected");
+                editor.node_selected = targetNodeElement;
+                editor.dispatch("nodeSelected", targetNodeId);
+                const parentOutputs = Array.from(
+                  targetNodeElement.querySelectorAll(".outputs .output")
+                );
+                let outputToFocus = null;
+                let outputIdx = -1;
+                for (let i = 0; i < parentOutputs.length; i++) {
+                  if (parentOutputs[i].classList.contains(parentOutputClass)) {
+                    outputToFocus = parentOutputs[i];
+                    outputIdx = i;
+                    break;
+                  }
+                }
+                if (outputToFocus) {
+                  currentFocusedOutputIndex = outputIdx;
+                  highlightOutput(outputToFocus, parentOutputs);
+                  console.log(
+                    `Seta Esquerda (livre): Output ${parentOutputClass} focado no pai ${targetNodeId}`
+                  );
+                }
+                setTimeout(() => {
+                  if (editor.node_selected === targetNodeElement)
+                    focusViewOnNode(targetNodeElement, editor);
+                }, 50);
+                return; // Evento tratado
+              }
+            } else {
+              console.log("Seta Esquerda (livre): Input focado sem conexão.");
+            }
+          } else {
+            console.log(
+              "Seta Esquerda (livre): Nenhum input focado para seguir ramo. Implementar busca por nó próximo à esquerda se necessário."
+            );
+          }
+        }
+
+        if (targetNodeElement) {
+          // Aplicável para Seta Direita (livre) se não retornou antes
+          selectedNodeElement.classList.remove("selected");
+          targetNodeElement.classList.add("selected");
+          editor.node_selected = targetNodeElement;
+          editor.dispatch("nodeSelected", targetNodeId);
+          setTimeout(() => {
+            if (editor.node_selected === targetNodeElement)
+              focusViewOnNode(targetNodeElement, editor);
+          }, 50);
+        }
+      }
+    }
+    // D. Navegação Livre entre Nós (Setas Verticais Sozinhas)
+    else if (
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey
+    ) {
+      if (editor.node_selected) {
+        event.preventDefault();
+        eventHandled = true;
+        console.log(`Seta Vertical (livre) ${event.key} pressionada.`);
+        const selectedNodeElement = editor.node_selected;
+        const currentNodeId = selectedNodeElement.id.replace("node-", "");
+        const currentRect = {
+          id: currentNodeId,
+          x: selectedNodeElement.offsetLeft,
+          y: selectedNodeElement.offsetTop,
+          width: selectedNodeElement.offsetWidth,
+          height: selectedNodeElement.offsetHeight,
+          cx:
+            selectedNodeElement.offsetLeft +
+            selectedNodeElement.offsetWidth / 2,
+          cy:
+            selectedNodeElement.offsetTop +
+            selectedNodeElement.offsetHeight / 2,
+        };
+        const candidatos = [];
+        const moduleName = editor.module;
+        const allNodesData = editor.drawflow.drawflow[moduleName].data;
+
+        for (const nodeId_iter in allNodesData) {
+          if (nodeId_iter === currentNodeId) continue;
+          const nodeEl = document.getElementById("node-" + nodeId_iter);
+          if (!nodeEl) continue;
+          const r = {
+            id: nodeId_iter,
+            x: nodeEl.offsetLeft,
+            y: nodeEl.offsetTop,
+            width: nodeEl.offsetWidth,
+            height: nodeEl.offsetHeight,
+            cx: nodeEl.offsetLeft + nodeEl.offsetWidth / 2,
+            cy: nodeEl.offsetTop + nodeEl.offsetHeight / 2,
+          };
+          const horizontalMatch =
+            currentRect.x < r.x + r.width &&
+            currentRect.x + currentRect.width > r.x;
+          if (horizontalMatch) {
+            if (event.key === "ArrowUp" && r.y + r.height <= currentRect.y) {
+              candidatos.push({
+                nodeEl: nodeEl,
+                rect: r,
+                verticalDistance: currentRect.y - (r.y + r.height),
+              });
+            } else if (
+              event.key === "ArrowDown" &&
+              r.y >= currentRect.y + currentRect.height
+            ) {
+              candidatos.push({
+                nodeEl: nodeEl,
+                rect: r,
+                verticalDistance: r.y - (currentRect.y + currentRect.height),
+              });
+            }
+          }
+        }
+        if (candidatos.length > 0) {
+          candidatos.sort((a, b) => {
+            if (a.verticalDistance !== b.verticalDistance)
+              return a.verticalDistance - b.verticalDistance;
+            return (
+              Math.abs(currentRect.cx - a.rect.cx) -
+              Math.abs(currentRect.cx - b.rect.cx)
+            );
+          });
+          const targetNodeElement = candidatos[0].nodeEl;
+          const targetNodeId = candidatos[0].rect.id;
+          selectedNodeElement.classList.remove("selected");
+          targetNodeElement.classList.add("selected");
+          editor.node_selected = targetNodeElement;
+          editor.dispatch("nodeSelected", targetNodeId);
+          console.log(`Navegou (seta vertical) para nó: ${targetNodeId}`);
+          setTimeout(() => {
+            if (editor.node_selected === targetNodeElement)
+              focusViewOnNode(targetNodeElement, editor);
+          }, 50);
         } else {
           console.log(
-            "Input focado não tem conexões de entrada para seguir para trás."
+            `Nenhum nó encontrado na direção ${event.key} com alinhamento horizontal.`
           );
         }
       }
     }
-    // ... fim do document.addEventListener('keydown', function(event) { ... }); Ex: });
-  });
+    // --- FIM DA LÓGICA DE NAVEGAÇÃO DO DRAWFLOW ---
 
+    // Adicione aqui seus outros handlers de teclado (Ctrl+C, V, Delete etc.),
+    // cada um como um 'else if (condiçãoDaTecla) { eventHandled = true; ... }'
+    // Exemplo:
+    // else if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) {
+    //    if (editor.node_selected || selectedNodes.size > 0) {
+    //       event.preventDefault(); eventHandled = true;
+    //       copySelectedNodes();
+    //    }
+    // }
+
+    // if (eventHandled) {
+    //    event.stopPropagation(); // Opcional: para previnir outros listeners se o Drawflow tratou
+    // }
+  });
   // Modifique a função addNodeToDrawFlow para que ela use os arrays de entrada/saída corretamente
   // e retorne o ID do nó criado se possível (ou adapte a lógica de conexão).
   // A função `editor.addNode` já retorna o ID.
@@ -1191,14 +1550,13 @@ var currentFocusedOutputIndex = -1; // -1 indica nenhum output focado
 // Adicione estas duas variáveis globais
 var focusedInputElement = null;
 var currentFocusedInputIndex = -1;
-// Adicione esta função para limpar o foco do input
+
 function resetInputFocus() {
   if (focusedInputElement) {
     focusedInputElement.classList.remove("input-focused");
   }
   focusedInputElement = null;
   currentFocusedInputIndex = -1;
-  // Garante limpeza visual se um nó ainda estiver selecionado
   if (editor.node_selected) {
     const inputs = Array.from(
       editor.node_selected.querySelectorAll(".inputs .input")
@@ -1206,17 +1564,14 @@ function resetInputFocus() {
     inputs.forEach((inp) => inp.classList.remove("input-focused"));
   }
 }
-// Adicione esta função para destacar um input
+
 function highlightInput(inputElement, nodeInputs) {
-  // Limpa foco de todos os inputs do nó atual
   if (nodeInputs && nodeInputs.length > 0) {
     nodeInputs.forEach((inp) => inp.classList.remove("input-focused"));
   } else if (focusedInputElement) {
-    // Fallback para limpar o foco global se nodeInputs não for fornecido
     focusedInputElement.classList.remove("input-focused");
   }
 
-  // Limpa o antigo focusedInputElement se ele não estiver na lista atual de inputs do nó
   if (
     focusedInputElement &&
     (!nodeInputs || !nodeInputs.includes(focusedInputElement))
@@ -1227,9 +1582,8 @@ function highlightInput(inputElement, nodeInputs) {
   if (inputElement) {
     inputElement.classList.add("input-focused");
     focusedInputElement = inputElement;
-    // currentFocusedInputIndex deve ser atualizado pelo chamador
   } else {
-    focusedInputElement = null; // Se inputElement for null, limpa o foco
+    focusedInputElement = null;
   }
 }
 // Função para resetar o foco do output
