@@ -794,59 +794,7 @@
       border-color: #6a6f74;
       color: #ffffff;
     }
-
-    #file-tabs,
-    #sub-tabs {
-      display: flex;
-      gap: 8px;
-      margin: 10px;
-      flex-wrap: wrap;
-    }
-
-    .file-tab,
-    .sub-tab,
-    .new-file-btn,
-    .new-sub-btn {
-      background: linear-gradient(145deg, #1b1b1b, #292929);
-      border: 1px solid #333;
-      color: #0ff;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-family: monospace;
-      cursor: pointer;
-      transition: 0.2s;
-    }
-
-    .file-tab.active,
-    .sub-tab.active {
-      background: #0ff;
-      color: #111;
-      font-weight: bold;
-    }
-
-    .file-tab:hover,
-    .sub-tab:hover,
-    .new-file-btn:hover,
-    .new-sub-btn:hover {
-      background: #0ff4;
-    }
   </style>
-  <div id="file-tabs" class="file-tabs">
-    <!-- Abas superiores (arquivos) -->
-    <button class="file-tab active" data-id="file1">Arquivo 1</button>
-    <button class="file-tab" data-id="file2">Arquivo 2</button>
-  </div>
-
-  <div id="sub-tabs" class="sub-tabs">
-    <!-- Abas inferiores (subpáginas) -->
-    <button class="sub-tab active" data-sub="main">Main</button>
-  </div>
-  <div id="file-tabs" class="file-tabs"></div>
-  <button id="new-file-btn" class="new-file-btn">+ Novo Arquivo</button>
-
-  <div id="sub-tabs" class="sub-tabs"></div>
-  <button id="new-sub-btn" class="new-sub-btn">+ Nova Página</button>
-
 
   <div class="offcanvas offcanvas-end" tabindex="-1" id="global-editor-fullscreen" style="z-index:9999; width:100vw;">
     <div class="offcanvas-header">

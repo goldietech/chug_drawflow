@@ -2,7 +2,6 @@ var editor;
 var id;
 var ativarMenuAcoesPaleta = true; // Defina como false para desativar esta funcionalidade
 var position;
-
 window.informarRota = function (dados) {
   setTimeout(() => {
     console.log(dados);
