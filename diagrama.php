@@ -729,8 +729,186 @@
       background-color: #fff3cd;
       /* Um fundo levemente amarelado */
     }
-  </style>
 
+    .sidebar-footer-actions {
+      padding: 8px 5px;
+      text-align: center;
+      border-top: 1px solid rgba(0, 255, 255, 0.15);
+      background-color: #041220;
+      /* Cor de fundo consistente com a sidebar */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .footer-action-btn {
+      background: transparent;
+      border: 1px solid var(--galaxy-accent-cyan, #00ffff);
+      color: var(--galaxy-accent-cyan, #00ffff);
+      font-size: 1.2em;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: 5px;
+      transition: background-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .footer-action-btn:hover {
+      background-color: var(--galaxy-accent-cyan, #00ffff);
+      color: var(--galaxy-deep-space-blue, #0b1021);
+      box-shadow: 0 0 7px var(--galaxy-accent-cyan, #00ffff);
+    }
+
+    .menu-acoes-paleta {
+      /* Estilos do menu, position: absolute; z-index: 10010; display: none; etc. já no HTML ou JS */
+      background-color: #3a3f44;
+      border: 1px solid #50555a;
+      border-radius: 5px;
+      padding: 8px;
+      display: flex;
+      /* Adicionado para os botões, mas o display principal é controlado por JS */
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      min-width: 180px;
+    }
+
+    .menu-acoes-paleta .acao-paleta-btn {
+      background-color: #4a4f54;
+      color: #e0e0e0;
+      border: 1px solid #5a5f64;
+      padding: 8px 12px;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 0.9em;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .menu-acoes-paleta .acao-paleta-btn:hover {
+      background-color: #5a5f64;
+      border-color: #6a6f74;
+      color: #ffffff;
+    }
+
+    /* [[drawflow.css]] ou <style> em diagrama.php */
+    .abas-geral-container {
+      display: flex;
+      align-items: center;
+      padding: 5px;
+      background-color: #f0f0f0;
+      /* Cor de fundo da barra de abas */
+      user-select: none;
+    }
+
+    .tabs-list {
+      display: flex;
+      flex-grow: 1;
+      overflow-x: auto;
+      /* Scroll se muitas abas */
+      overflow-y: hidden;
+    }
+
+    .abas-superiores-container {
+      border-bottom: 1px solid #ccc;
+    }
+
+    .abas-inferiores-container {
+      border-top: 1px solid #ccc;
+    }
+
+    .tab-item,
+    .sub-tab-item {
+      padding: 8px 12px;
+      margin-right: 3px;
+      border: 1px solid #ccc;
+      background-color: #e9e9e9;
+      cursor: pointer;
+      border-radius: 4px 4px 0 0;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      font-size: 0.9em;
+      position: relative;
+      /* Para o botão de fechar */
+    }
+
+    .abas-inferiores-container .sub-tab-item {
+      font-size: 0.85em;
+      padding: 6px 10px;
+    }
+
+    .tab-item.active,
+    .sub-tab-item.active {
+      background-color: #ffffff;
+      /* Cor da aba ativa, idealmente a cor do seu canvas */
+      border-bottom-color: #ffffff;
+      /* Para fundir com o conteúdo */
+      font-weight: bold;
+    }
+
+    .abas-inferiores-container .tab-item.active,
+    .abas-inferiores-container .sub-tab-item.active {
+      border-top-color: #ccc;
+      border-bottom-color: transparent;
+      /* Se estiver acima do canvas */
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+      border-bottom-left-radius: 4px;
+      border-bottom-right-radius: 4px;
+      background-color: #ffffff;
+      border-top: 1px solid #ccc;
+      /* Ajuste conforme necessário */
+    }
+
+
+    .tab-nome {
+      margin-right: 5px;
+      /* Espaço antes do botão de fechar */
+    }
+
+    .close-tab-btn {
+      margin-left: 8px;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0px 4px;
+      border-radius: 50%;
+      opacity: 0.6;
+    }
+
+    .close-tab-btn:hover {
+      background-color: #dcdcdc;
+      opacity: 1;
+    }
+
+    .add-tab-btn {
+      padding: 6px 10px;
+      margin-left: 8px;
+      border: 1px solid #ccc;
+      background-color: #e0e0e0;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .add-tab-btn:hover {
+      background-color: #d0d0d0;
+    }
+  </style>
+  <div class="abas-geral-container abas-superiores-container">
+    <div id="lista-abas-superiores" class="tabs-list">
+    </div>
+    <button id="btn-add-aba-superior" class="add-tab-btn" title="Adicionar novo arquivo">+</button>
+  </div>
+
+  <div class="abas-geral-container abas-inferiores-container">
+    <div id="lista-abas-inferiores" class="tabs-list sub-tabs-list">
+    </div>
+    <button id="btn-add-sub-aba" class="add-tab-btn" title="Adicionar nova página/sub-diagrama ao arquivo atual">+</button>
+  </div>
   <div class="offcanvas offcanvas-end" tabindex="-1" id="global-editor-fullscreen" style="z-index:9999; width:100vw;">
     <div class="offcanvas-header">
       <button id="close-fullscreen" style="position: absolute; top: 10px; right: 10px; z-index: 1001; background-color: #333; color: #fff; border: none; padding: 5px 10px; cursor: pointer;"></button>
@@ -757,6 +935,14 @@
 
             <?php endforeach; ?>
           <?php endif; ?>
+        </div>
+        <div class="sidebar-footer-actions">
+          <button type="button" <?= $galaxia->abrirModal('AdicionarNo', ['estrela' => 'Galaxia', 'startSinal' => 'Diagramas'])['html']; ?> title="Novos Nós (placeholder)" class="footer-action-btn">
+            <i class="fas fa-plus-circle"></i>
+          </button>
+          <button type="button" title="Organizar Nós Automaticamente" class="footer-action-btn" onclick="if(typeof editor !== 'undefined' && typeof alinharDrawflowHierarquicamente === 'function') { alinharDrawflowHierarquicamente(editor); } else { console.error('Editor ou alinharDrawflowHierarquicamente não definido.'); }">
+            <i class="fas fa-project-diagram"></i>
+          </button>
         </div>
 
       </div>
@@ -799,4 +985,9 @@
   <div class="offcanvas-body conteudoCamposNo">
 
   </div>
+</div>
+<div id="menuAcoesPaletaContainer" class="menu-acoes-paleta" style="display: none; position: absolute; z-index: 10010;">
+  <button class="acao-paleta-btn" <?= $galaxia->abrirModal('EditarNo')['html']; ?> data-acao="info">Editar Nó</button>
+  <button class="acao-paleta-btn" data-acao="configurar_padroes">Configurar Padrões</button>
+  <button class="acao-paleta-btn" data-acao="ver_docs">Ver Documentação</button>
 </div>

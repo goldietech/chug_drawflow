@@ -1,6 +1,18 @@
 var editor;
 var id;
+var ativarMenuAcoesPaleta = true; // Defina como false para desativar esta funcionalidade
 var position;
+
+// [[diagrama.js]] Adicionar no escopo global ou dentro do $(document).ready
+let gerenciadorAbas = {
+  abasSuperiores: [], // Array de objetos para abas superiores
+  // Ex: { id: 'dom_id_tab_1', nomeModuloDrawflow: 'ArquivoPrincipal', nomeExibicao: 'Principal.json', ativa: true, subAbaAtivaId: 'dom_id_subtab_1_1', subAbas: [] }
+  // SubAbas Ex: { id: 'dom_id_subtab_1_1', nomeModuloDrawflow: 'ArquivoPrincipal_sub_Pagina1', nomeExibicao: 'Página 1', ativa: true }
+  idProximaAba: 1, // Contador para gerar IDs únicos para módulos
+  idProximaSubAba: 1,
+  moduloAtualmenteCarregadoNoEditor: null, // nomeModuloDrawflow da aba (superior ou inferior) ativa no canvas
+};
+
 window.informarRota = function (dados) {
   setTimeout(() => {
     console.log(dados);
@@ -11,6 +23,57 @@ window.informarRota = function (dados) {
     // Insere os valores nos inputs dentro da div selecionada
   }, 1000);
 };
+var menuAcoesPaletaAtual = null;
+var itemPaletaSegurado = null;
+var timerSegurarPaleta = null;
+var TEMPO_PARA_SEGURAR = 500; // 500ms para "segurar"
+
+function fecharMenuAcoesPaleta() {
+  if (menuAcoesPaletaElement) {
+    menuAcoesPaletaElement.style.display = "none";
+  }
+  itemPaletaSegurado = null; // Limpa a referência
+  // Remove o listener de clique global APENAS se ele foi adicionado
+  document.removeEventListener("click", handleClickGlobalParaFecharMenu);
+}
+function handleClickGlobalParaFecharMenu(event) {
+  // Se o menu está visível e o clique NÃO foi dentro do menu
+  if (
+    menuAcoesPaletaElement &&
+    menuAcoesPaletaElement.style.display !== "none" &&
+    !menuAcoesPaletaElement.contains(event.target)
+  ) {
+    // E também não foi no item da paleta que o abriu
+    if (itemPaletaSegurado && !itemPaletaSegurado.contains(event.target)) {
+      fecharMenuAcoesPaleta();
+    } else if (!itemPaletaSegurado) {
+      // Segurança se itemPaletaSegurado for null
+      fecharMenuAcoesPaleta();
+    }
+  }
+}
+
+function mostrarMenuAcoes(elementoItemPaleta) {
+  if (!ativarMenuAcoesPaleta || !menuAcoesPaletaElement) return;
+
+  fecharMenuAcoesPaleta(); // Fecha qualquer menu aberto e limpa listeners antigos
+
+  itemPaletaSegurado = elementoItemPaleta;
+
+  const rect = elementoItemPaleta.getBoundingClientRect();
+  menuAcoesPaletaElement.style.top = `${rect.bottom + window.scrollY}px`;
+  menuAcoesPaletaElement.style.left = `${rect.left + window.scrollX}px`;
+  menuAcoesPaletaElement.style.display = "block";
+
+  // Opcional: Atualizar dinamicamente o conteúdo/título do menu se necessário
+  // Ex: menuAcoesPaletaElement.querySelector('.menu-paleta-titulo').textContent = `Ações para ${elementoItemPaleta.getAttribute('data-node')}`;
+
+  // Adiciona listener para fechar ao clicar fora (após um pequeno delay para não fechar com o mesmo clique/toque que abriu)
+  setTimeout(() => {
+    document.addEventListener("click", handleClickGlobalParaFecharMenu);
+  }, 0);
+}
+
 window.atualizarDiagramaWorkflow = function (dados) {
   if (dados.json) {
     workflowSalvo = JSON.parse(dados.json);
@@ -24,6 +87,571 @@ $(document).on("click", ".btn-estrutura", function () {
   // Verifica se os dados são válidos antes de prosseguir
   salvar.trigger("click");
 });
+
+function gerarIdUnicoDom() {
+  return "dom_id_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
+}
+
+function obterAbaSuperiorAtivaObj() {
+  if (!gerenciadorAbas.idAbaSuperiorAtiva) return null;
+  return gerenciadorAbas.abasSuperiores.find(
+    (ts) => ts.id === gerenciadorAbas.idAbaSuperiorAtiva
+  );
+}
+
+function renderizarAbasSuperiores() {
+  const container = $("#lista-abas-superiores");
+  container.empty();
+  gerenciadorAbas.abasSuperiores.forEach((tabInfo) => {
+    const tabEl = $(`
+          <div class="tab-item ${tabInfo.ativa ? "active" : ""}" data-tab-id="${
+      tabInfo.id
+    }" title="${tabInfo.nomeModuloDrawflow}">
+              <span class="tab-nome">${tabInfo.nomeExibicao}</span>
+              ${
+                gerenciadorAbas.abasSuperiores.length > 1
+                  ? '<span class="close-tab-btn" title="Fechar arquivo">×</span>'
+                  : ""
+              }
+          </div>
+      `);
+    container.append(tabEl);
+  });
+  // Após renderizar as abas superiores, renderizar as inferiores correspondentes
+  renderizarAbasInferiores();
+}
+
+function renderizarAbasInferiores() {
+  const container = $("#lista-abas-inferiores");
+  container.empty();
+  const abaSuperiorAtiva = obterAbaSuperiorAtivaObj();
+
+  if (abaSuperiorAtiva && abaSuperiorAtiva.subAbas) {
+    $("#btn-add-sub-aba").show(); // Mostra o botão de adicionar sub-aba
+    abaSuperiorAtiva.subAbas.forEach((subTabInfo) => {
+      const subTabEl = $(`
+              <div class="sub-tab-item ${
+                subTabInfo.ativa ? "active" : ""
+              }" data-subtab-id="${subTabInfo.id}" title="${
+        subTabInfo.nomeModuloDrawflow
+      }">
+                  <span class="tab-nome">${subTabInfo.nomeExibicao}</span>
+                  ${
+                    abaSuperiorAtiva.subAbas.length > 1
+                      ? '<span class="close-tab-btn" title="Fechar página">×</span>'
+                      : ""
+                  }
+              </div>
+          `);
+      container.append(subTabEl);
+    });
+  } else {
+    $("#btn-add-sub-aba").hide(); // Esconde se não há aba superior ou ela não suporta sub-abas
+  }
+}
+
+// --- Lógica de Manipulação de Abas Superiores ---
+function manipularCliqueAbaSuperior(event) {
+  if ($(event.target).hasClass("close-tab-btn")) return; // Deixa para o handler de fechar
+
+  const tabIdClicada = $(this).data("tab-id");
+  selecionarAbaSuperior(tabIdClicada);
+}
+
+function selecionarAbaSuperior(
+  tabIdParaAtivar,
+  forcarRecarregamentoModulo = false
+) {
+  const abaParaAtivar = gerenciadorAbas.abasSuperiores.find(
+    (ts) => ts.id === tabIdParaAtivar
+  );
+  if (!abaParaAtivar) {
+    console.warn(
+      "Tentativa de selecionar aba superior inexistente:",
+      tabIdParaAtivar
+    );
+    // Se nenhuma aba para ativar foi encontrada, mas ainda existem abas, seleciona a primeira
+    if (gerenciadorAbas.abasSuperiores.length > 0) {
+      selecionarAbaSuperior(gerenciadorAbas.abasSuperiores[0].id, true);
+    }
+    return;
+  }
+
+  gerenciadorAbas.abasSuperiores.forEach(
+    (ts) => (ts.ativa = ts.id === tabIdParaAtivar)
+  );
+  gerenciadorAbas.idAbaSuperiorAtiva = tabIdParaAtivar;
+
+  let moduloDrawflowParaCarregar = abaParaAtivar.nomeModuloDrawflow; // Default: módulo da aba superior
+  let subAbaAtivaObj = null;
+
+  if (abaParaAtivar.subAbas.length > 0) {
+    subAbaAtivaObj = abaParaAtivar.subAbas.find(
+      (st) => st.id === abaParaAtivar.moduloSubAbaAtiva
+    );
+    if (!subAbaAtivaObj) {
+      // Se a sub-aba ativa registrada não existe mais ou não foi definida
+      subAbaAtivaObj = abaParaAtivar.subAbas[0]; // Pega a primeira sub-aba como padrão
+      abaParaAtivar.moduloSubAbaAtiva = subAbaAtivaObj.id;
+    }
+  }
+
+  if (subAbaAtivaObj) {
+    moduloDrawflowParaCarregar = subAbaAtivaObj.nomeModuloDrawflow;
+    abaParaAtivar.subAbas.forEach(
+      (st) => (st.ativa = st.id === subAbaAtivaObj.id)
+    );
+  } else {
+    // Não há sub-abas, então desmarca todas as sub-abas (se houver alguma marcada erroneamente)
+    abaParaAtivar.subAbas.forEach((st) => (st.ativa = false));
+    abaParaAtivar.moduloSubAbaAtiva = null;
+    // moduloDrawflowParaCarregar já é o da aba superior
+  }
+
+  if (
+    gerenciadorAbas.moduloAtualmenteCarregadoNoEditor !==
+      moduloDrawflowParaCarregar ||
+    forcarRecarregamentoModulo
+  ) {
+    if (editor.drawflow.drawflow[moduloDrawflowParaCarregar]) {
+      editor.changeModule(moduloDrawflowParaCarregar);
+      gerenciadorAbas.moduloAtualmenteCarregadoNoEditor =
+        moduloDrawflowParaCarregar;
+    } else {
+      console.error(
+        `Módulo Drawflow "${moduloDrawflowParaCarregar}" não encontrado para carregar.`
+      );
+      // Tentar carregar o módulo da aba superior como fallback se o da sub-aba falhou
+      if (
+        subAbaAtivaObj &&
+        editor.drawflow.drawflow[abaParaAtivar.nomeModuloDrawflow]
+      ) {
+        editor.changeModule(abaParaAtivar.nomeModuloDrawflow);
+        gerenciadorAbas.moduloAtualmenteCarregadoNoEditor =
+          abaParaAtivar.nomeModuloDrawflow;
+        // Desmarcar sub-aba ativa se seu módulo não pôde ser carregado
+        abaParaAtivar.subAbas.forEach((st) => (st.ativa = false));
+        abaParaAtivar.moduloSubAbaAtiva = null;
+      }
+    }
+  }
+  renderizarAbasSuperiores(); // Re-renderiza para destacar a ativa e atualizar as inferiores
+}
+
+function adicionarNovaAbaSuperior(
+  nomeExibicaoPadrao = null,
+  nomeModuloDrawflowPadrao = null,
+  ehAbaDaRequisicao = false
+) {
+  const nomeExibicao =
+    nomeExibicaoPadrao ||
+    prompt(
+      "Nome para o novo arquivo (ex: MeuDiagrama):",
+      `Arquivo ${gerenciadorAbas.idProximaAba}`
+    );
+  if (!nomeExibicao) return null;
+
+  const nomeModuloDrawflow =
+    nomeModuloDrawflowPadrao || `Arquivo_${gerenciadorAbas.idProximaAba++}`;
+  if (!editor.drawflow.drawflow[nomeModuloDrawflow]) {
+    editor.addModule(nomeModuloDrawflow);
+  }
+
+  const novaAbaSuperiorId = gerarIdUnicoDom();
+  const novaAbaInfo = {
+    id: novaAbaSuperiorId,
+    nomeModuloDrawflow: nomeModuloDrawflow,
+    nomeExibicao: nomeExibicao,
+    ativa: false,
+    fixa: ehAbaDaRequisicao, // Marca se é a aba principal da requisição
+    moduloSubAbaAtiva: null, // Será definido pela primeira sub-aba
+    subAbas: [],
+  };
+  gerenciadorAbas.abasSuperiores.push(novaAbaInfo);
+
+  // TODA aba superior DEVE ter pelo menos uma sub-aba.
+  const primeiraSubAba = adicionarSubAbaInterna(novaAbaInfo, "Página 1", true); // true = é a primeira sub-aba
+  // selecionarAbaSuperior cuidará de carregar o módulo da sub-aba correta.
+
+  selecionarAbaSuperior(novaAbaSuperiorId, true); // true para forçar carregamento
+  return novaAbaInfo;
+}
+
+function fecharAbaSuperior(event) {
+  event.stopPropagation();
+  const tabIdParaFechar = $(this).closest(".tab-item").data("tab-id");
+  const abaParaFecharObj = gerenciadorAbas.abasSuperiores.find(
+    (ts) => ts.id === tabIdParaFechar
+  );
+
+  if (abaParaFecharObj && abaParaFecharObj.fixa) {
+    alert("Não é possível fechar a aba principal do arquivo.");
+    return;
+  }
+  if (gerenciadorAbas.abasSuperiores.length <= 1) {
+    // Impede fechar a última aba se não for fixa (lógica de fixa já impede)
+    alert("Não é possível fechar a última aba de arquivo.");
+    return;
+  }
+  // ... (resto da lógica de fecharAbaSuperior da resposta anterior, garantindo que remove os módulos Drawflow das sub-abas também)
+  const abaParaFecharIndex = gerenciadorAbas.abasSuperiores.findIndex(
+    (ts) => ts.id === tabIdParaFechar
+  );
+  if (abaParaFecharIndex === -1) return;
+
+  const abaRemovida = gerenciadorAbas.abasSuperiores.splice(
+    abaParaFecharIndex,
+    1
+  )[0];
+
+  // Remove o módulo principal e todos os seus submódulos (sub-abas) do Drawflow
+  abaRemovida.subAbas.forEach((subAba) => {
+    if (editor.drawflow.drawflow[subAba.nomeModuloDrawflow])
+      editor.removeModule(subAba.nomeModuloDrawflow);
+  });
+  if (editor.drawflow.drawflow[abaRemovida.nomeModuloDrawflow])
+    editor.removeModule(abaRemovida.nomeModuloDrawflow);
+
+  if (abaRemovida.ativa) {
+    gerenciadorAbas.idAbaSuperiorAtiva = null; // Força a re-seleção
+    const proximoIndiceParaAtivar = Math.max(0, abaParaFecharIndex - 1);
+    if (gerenciadorAbas.abasSuperiores.length > 0) {
+      selecionarAbaSuperior(
+        gerenciadorAbas.abasSuperiores[proximoIndiceParaAtivar].id,
+        true
+      );
+    } else {
+      // Isso não deve acontecer se a lógica de "última aba" e "aba fixa" estiver correta
+      adicionarNovaAbaSuperior("Principal", "Home", true); // Cria uma nova aba padrão
+    }
+  } else {
+    renderizarAbasSuperiores();
+  }
+}
+
+// --- Lógica de Manipulação de Abas Inferiores (Sub-Abas) ---
+function manipularCliqueSubAba(event) {
+  if ($(event.target).hasClass("close-tab-btn")) return;
+
+  const subTabIdClicada = $(this).data("subtab-id");
+  selecionarSubAba(subTabIdClicada);
+}
+function selecionarSubAba(
+  subTabIdParaAtivar,
+  forcarRecarregamentoModulo = false
+) {
+  const abaSuperiorAtiva = obterAbaSuperiorAtivaObj();
+  if (!abaSuperiorAtiva) return;
+
+  const subAbaParaAtivar = abaSuperiorAtiva.subAbas.find(
+    (st) => st.id === subTabIdParaAtivar
+  );
+  if (!subAbaParaAtivar) {
+    // Se a sub-aba não for encontrada, tenta selecionar a primeira sub-aba da aba superior atual
+    if (abaSuperiorAtiva.subAbas.length > 0) {
+      selecionarSubAba(abaSuperiorAtiva.subAbas[0].id, true);
+    }
+    return;
+  }
+
+  abaSuperiorAtiva.subAbas.forEach(
+    (st) => (st.ativa = st.id === subTabIdParaAtivar)
+  );
+  abaSuperiorAtiva.moduloSubAbaAtiva = subTabIdParaAtivar; // Atualiza qual sub-aba está ativa na PAI
+
+  if (
+    gerenciadorAbas.moduloAtualmenteCarregadoNoEditor !==
+      subAbaParaAtivar.nomeModuloDrawflow ||
+    forcarRecarregamentoModulo
+  ) {
+    if (editor.drawflow.drawflow[subAbaParaAtivar.nomeModuloDrawflow]) {
+      editor.changeModule(subAbaParaAtivar.nomeModuloDrawflow);
+      gerenciadorAbas.moduloAtualmenteCarregadoNoEditor =
+        subAbaParaAtivar.nomeModuloDrawflow;
+    } else {
+      console.error(
+        `Módulo Drawflow da SUB-ABA "${subAbaParaAtivar.nomeModuloDrawflow}" não encontrado.`
+      );
+    }
+  }
+  renderizarAbasInferiores();
+}
+
+function adicionarNovaSubAba() {
+  const abaSuperiorAtiva = obterAbaSuperiorAtivaObj();
+  if (!abaSuperiorAtiva) {
+    alert("Selecione um arquivo (aba superior) primeiro.");
+    return;
+  }
+
+  const nomeExibicao = prompt(
+    "Nome para a nova página/sub-diagrama:",
+    `Página_${gerenciadorAbas.idProximaSubAba}`
+  );
+  if (!nomeExibicao) return;
+
+  adicionarSubAbaInterna(abaSuperiorAtiva, nomeExibicao, true); // true para auto-selecionar
+}
+
+// Função interna para adicionar sub-aba, usada por adicionarNovaAbaSuperior e adicionarNovaSubAba
+
+function adicionarSubAbaInterna(
+  abaSuperiorPaiObj,
+  nomeExibicaoSubAba,
+  ehPrimeiraSubAbaDoPai = false
+) {
+  const nomeModuloSubDrawflow = `${
+    abaSuperiorPaiObj.nomeModuloDrawflow
+  }_subpage_${gerenciadorAbas.idProximaSubAba++}`;
+  if (!editor.drawflow.drawflow[nomeModuloSubDrawflow]) {
+    // Adiciona o módulo só se não existir
+    editor.addModule(nomeModuloSubDrawflow);
+  }
+
+  const novaSubAbaId = gerarIdUnicoDom();
+  const novaSubAbaInfo = {
+    id: novaSubAbaId,
+    nomeModuloDrawflow: nomeModuloSubDrawflow,
+    nomeExibicao: nomeExibicaoSubAba,
+    ativa: false, // Será definida pela lógica de seleção
+  };
+  abaSuperiorPaiObj.subAbas.push(novaSubAbaInfo);
+
+  if (ehPrimeiraSubAbaDoPai) {
+    abaSuperiorPaiObj.moduloSubAbaAtiva = novaSubAbaId; // Define como a sub-aba padrão para este pai
+  }
+
+  // Se a aba pai está atualmente ativa na UI, e esta nova sub-aba deve ser selecionada
+  if (abaSuperiorPaiObj.ativa && ehPrimeiraSubAbaDoPai) {
+    // A seleção efetiva ocorrerá ao chamar selecionarAbaSuperior ou selecionarSubAba
+  }
+  return novaSubAbaInfo;
+}
+
+function fecharSubAba(event) {
+  event.stopPropagation();
+  const abaSuperiorAtiva = obterAbaSuperiorAtivaObj();
+  if (!abaSuperiorAtiva || abaSuperiorAtiva.subAbas.length <= 1) {
+    alert("Não é possível fechar a última página/sub-diagrama deste arquivo.");
+    return;
+  }
+
+  const subTabIdParaFechar = $(this).closest(".sub-tab-item").data("subtab-id");
+  const subAbaParaFecharIndex = abaSuperiorAtiva.subAbas.findIndex(
+    (st) => st.id === subTabIdParaFechar
+  );
+  if (subAbaParaFecharIndex === -1) return;
+
+  const subAbaParaFechar = abaSuperiorAtiva.subAbas[subAbaParaFecharIndex];
+  editor.removeModule(subAbaParaFechar.nomeModuloDrawflow);
+  abaSuperiorAtiva.subAbas.splice(subAbaParaFecharIndex, 1);
+
+  if (subAbaParaFechar.ativa) {
+    const proximoIndiceParaAtivar = Math.max(0, subAbaParaFecharIndex - 1);
+    abaSuperiorAtiva.moduloSubAbaAtiva = null; // Força re-seleção
+    if (abaSuperiorAtiva.subAbas.length > 0) {
+      selecionarSubAba(
+        abaSuperiorAtiva.subAbas[proximoIndiceParaAtivar].id,
+        true
+      );
+    } else {
+      // Nenhuma sub-aba restou, carrega o módulo da aba superior "pai"
+      editor.changeModule(abaSuperiorAtiva.nomeModuloDrawflow);
+      gerenciadorAbas.moduloAtualmenteCarregadoNoEditor =
+        abaSuperiorAtiva.nomeModuloDrawflow;
+      renderizarAbasInferiores();
+    }
+  } else {
+    renderizarAbasInferiores();
+  }
+}
+
+// --- Carregamento Inicial e Persistência (Simplificado) ---
+
+function inicializarSistemaDeAbas() {
+  // Obter o ID do diagrama da requisição (ex: do PHP, como você mencionou)
+  // Supondo que esteja em uma variável global ou em um elemento do DOM.
+  // Ex: const idGalaxiaDaRequisicao = "<?php echo $idGalaxia; ?>"; // Se estiver injetando via PHP
+  // Para este exemplo, vou simular. Se não houver, usaremos 'Home'.
+  let idModuloDaRequisicao = $(".workflowSalvo").data("id-galaxia-inicial"); // Supondo que você adicione isso
+  if (!idModuloDaRequisicao) {
+    // Tenta pegar de uma variável global se configurada, ou padrão para 'Home'
+    idModuloDaRequisicao = window.idGalaxiaInicialDrawflow || "Home";
+  }
+
+  const estadoSalvoLocalStorage = localStorage.getItem(
+    "gerenciadorAbasDrawflow"
+  );
+  let primeiroModuloParaCarregarNoEditor = idModuloDaRequisicao;
+
+  gerenciadorAbas.abasSuperiores = []; // Limpa para reconstruir
+  // Os módulos Drawflow já foram carregados por editor.import(workflowSalvo) antes desta função.
+
+  if (estadoSalvoLocalStorage) {
+    try {
+      const dadosAbasSalvas = JSON.parse(estadoSalvoLocalStorage);
+      gerenciadorAbas.idProximaAba = dadosAbasSalvas.idProximaAba || 1;
+      gerenciadorAbas.idProximaSubAba = dadosAbasSalvas.idProximaSubAba || 1;
+
+      dadosAbasSalvas.abasSuperiores.forEach((asSalva) => {
+        // Verifica se o módulo principal da aba salva ainda existe no Drawflow
+        if (editor.drawflow.drawflow[asSalva.nomeModuloDrawflow]) {
+          const subAbasRecuperadas = [];
+          asSalva.subAbas.forEach((saSalva) => {
+            // Verifica se o módulo da sub-aba salva ainda existe
+            if (editor.drawflow.drawflow[saSalva.nomeModuloDrawflow]) {
+              subAbasRecuperadas.push({
+                id: saSalva.id || gerarIdUnicoDom(), // Gera ID DOM se não existir
+                nomeModuloDrawflow: saSalva.nomeModuloDrawflow,
+                nomeExibicao: saSalva.nomeExibicao,
+                ativa: false,
+              });
+            }
+          });
+
+          if (subAbasRecuperadas.length === 0) {
+            // Se nenhuma sub-aba válida foi encontrada, cria uma padrão
+            const nomeModuloSubDefault = `${
+              asSalva.nomeModuloDrawflow
+            }_subpage_${gerenciadorAbas.idProximaSubAba++}`;
+            if (!editor.drawflow.drawflow[nomeModuloSubDefault])
+              editor.addModule(nomeModuloSubDefault);
+            subAbasRecuperadas.push({
+              id: gerarIdUnicoDom(),
+              nomeModuloDrawflow: nomeModuloSubDefault,
+              nomeExibicao: "Página 1",
+              ativa: false,
+            });
+          }
+
+          gerenciadorAbas.abasSuperiores.push({
+            id: asSalva.id || gerarIdUnicoDom(), // Gera ID DOM se não existir
+            nomeModuloDrawflow: asSalva.nomeModuloDrawflow,
+            nomeExibicao: asSalva.nomeExibicao,
+            ativa: false,
+            fixa:
+              asSalva.nomeModuloDrawflow === idModuloDaRequisicao ||
+              asSalva.fixa, // Aba da requisição é fixa
+            moduloSubAbaAtiva: asSalva.moduloSubAbaAtiva, // ID DOM da sub-aba
+            subAbas: subAbasRecuperadas,
+          });
+        }
+      });
+
+      // Ativa a aba superior e sub-aba corretas com base no localStorage
+      const idAbaSuperiorAtivaSalva = dadosAbasSalvas.idAbaSuperiorAtiva;
+      let abaSuperiorParaAtivar = gerenciadorAbas.abasSuperiores.find(
+        (ts) => ts.id === idAbaSuperiorAtivaSalva
+      );
+
+      if (!abaSuperiorParaAtivar && gerenciadorAbas.abasSuperiores.length > 0) {
+        abaSuperiorParaAtivar =
+          gerenciadorAbas.abasSuperiores.find((ts) => ts.fixa) ||
+          gerenciadorAbas.abasSuperiores[0];
+      }
+
+      if (abaSuperiorParaAtivar) {
+        gerenciadorAbas.idAbaSuperiorAtiva = abaSuperiorParaAtivar.id;
+        abaSuperiorParaAtivar.ativa = true;
+
+        let subAbaParaAtivar = abaSuperiorParaAtivar.subAbas.find(
+          (st) => st.id === abaSuperiorParaAtivar.moduloSubAbaAtiva
+        );
+        if (!subAbaParaAtivar && abaSuperiorParaAtivar.subAbas.length > 0) {
+          subAbaParaAtivar = abaSuperiorParaAtivar.subAbas[0];
+          abaSuperiorParaAtivar.moduloSubAbaAtiva = subAbaParaAtivar.id;
+        }
+
+        if (subAbaParaAtivar) {
+          primeiroModuloParaCarregarNoEditor =
+            subAbaParaAtivar.nomeModuloDrawflow;
+          subAbaParaAtivar.ativa = true;
+        } else {
+          primeiroModuloParaCarregarNoEditor =
+            abaSuperiorParaAtivar.nomeModuloDrawflow;
+        }
+      }
+    } catch (err) {
+      console.error(
+        "Erro ao carregar estado das abas do localStorage, usando padrão:",
+        err
+      );
+      gerenciadorAbas.abasSuperiores = []; // Reseta se houve erro
+    }
+  }
+
+  // Se, após carregar do localStorage, não houver abas ou a aba da requisição não existir, cria.
+  let abaDaRequisicaoObj = gerenciadorAbas.abasSuperiores.find(
+    (as) => as.nomeModuloDrawflow === idModuloDaRequisicao
+  );
+  if (!abaDaRequisicaoObj) {
+    // Adiciona a aba da requisição se ela não foi carregada do localStorage mas existe no editor
+    if (editor.drawflow.drawflow[idModuloDaRequisicao]) {
+      abaDaRequisicaoObj = adicionarNovaAbaSuperior(
+        idModuloDaRequisicao.replace(/_/g, " "),
+        idModuloDaRequisicao,
+        true
+      ); // true para fixa
+    } else {
+      // Se o módulo da requisição nem existe no editor (ex: novo idGalaxia)
+      editor.addModule(idModuloDaRequisicao); // Cria o módulo principal para o ID da requisição
+      abaDaRequisicaoObj = adicionarNovaAbaSuperior(
+        idModuloDaRequisicao.replace(/_/g, " "),
+        idModuloDaRequisicao,
+        true
+      );
+    }
+  } else {
+    abaDaRequisicaoObj.fixa = true; // Garante que é fixa
+  }
+
+  // Se ainda não há abas superiores (caso extremo), cria uma padrão.
+  if (gerenciadorAbas.abasSuperiores.length === 0) {
+    const nomeModuloPadrao = "Home";
+    if (!editor.drawflow.drawflow[nomeModuloPadrao])
+      editor.addModule(nomeModuloPadrao);
+    adicionarNovaAbaSuperior("Principal", nomeModuloPadrao, true); // A aba da requisição é a 'Home'
+  }
+
+  // Garante que a aba da requisição (ou a primeira, se aquela não existir) esteja definida como ativa.
+  let abaInicialParaSelecionar =
+    gerenciadorAbas.abasSuperiores.find(
+      (as) => as.nomeModuloDrawflow === idModuloDaRequisicao
+    ) || gerenciadorAbas.abasSuperiores[0];
+  if (abaInicialParaSelecionar) {
+    // A função selecionarAbaSuperior já define o primeiroModuloParaCarregarNoEditor indiretamente
+    // ao ativar a aba e sua sub-aba padrão.
+    selecionarAbaSuperior(abaInicialParaSelecionar.id, true); // forçar recarregamento do módulo correto
+  } else {
+    console.error("Nenhuma aba pôde ser selecionada inicialmente.");
+    renderizarAbasSuperiores(); // Ao menos renderiza o que tiver
+  }
+}
+
+function criarAbaSuperiorPadrao() {
+  const nomeModuloDrawflow = `Arquivo_${gerenciadorAbas.idProximaAba++}`;
+  const nomeExibicao = "Novo Arquivo";
+  editor.addModule(nomeModuloDrawflow);
+
+  const novaAbaId = gerarIdUnicoDom();
+  const novaAbaInfo = {
+    id: novaAbaId,
+    nomeModuloDrawflow: nomeModuloDrawflow,
+    nomeExibicao: nomeExibicao,
+    ativa: true, // A primeira criada é ativa
+    moduloSubAbaAtiva: null,
+    subAbas: [],
+  };
+  gerenciadorAbas.abasSuperiores.push(novaAbaInfo);
+  gerenciadorAbas.idAbaSuperiorAtiva = novaAbaId;
+
+  // Adiciona uma sub-aba padrão
+  const subAbaPadrao = adicionarSubAbaInterna(novaAbaInfo, "Página 1", true);
+  novaAbaInfo.moduloSubAbaAtiva = subAbaPadrao.id; // Define a sub-aba ativa
+
+  return novaAbaInfo;
+}
+
 $(document).ready(function (e) {
   id = document.getElementById("drawflow");
   let workflowSalvo = $(".workflowSalvo").val();
@@ -43,6 +671,26 @@ $(document).ready(function (e) {
 
     editor.start();
   }
+  inicializarSistemaDeAbas(); // Chamar após editor.start()
+
+  // Listeners para os botões globais de adicionar abas
+  $("#btn-add-aba-superior").on("click", adicionarNovaAbaSuperior);
+  $("#btn-add-sub-aba").on("click", adicionarNovaSubAba);
+
+  // Listener para fechar e selecionar abas (usando delegação de eventos)
+  $("#lista-abas-superiores").on(
+    "click",
+    ".tab-item",
+    manipularCliqueAbaSuperior
+  );
+  $("#lista-abas-superiores").on("click", ".close-tab-btn", fecharAbaSuperior);
+
+  $("#lista-abas-inferiores").on(
+    "click",
+    ".sub-tab-item",
+    manipularCliqueSubAba
+  );
+  $("#lista-abas-inferiores").on("click", ".close-tab-btn", fecharSubAba);
 
   editor.on("import", () => {
     setTimeout(() => {
@@ -333,26 +981,286 @@ $(document).ready(function (e) {
   editor.on("removeReroute", function (id) {
     console.log("Reroute removed " + id);
   });
-  editor.on("export", function (json) {
-    console.log({
-      json: json,
-    });
-    let salvar = $(".salvarWorkFlow");
-    $(".jsonGalaxia").val(JSON.stringify(json));
-    setTimeout(() => {}, 200);
-    // Verifica se os dados são válidos antes de prosseguir
-    salvar.trigger("click");
-    // Criação do objeto de dados
+  editor.on("export", (jsonDrawflowCompleto) => {
+    console.log(
+      "Drawflow JSON COMPLETO exportado pelo editor:",
+      jsonDrawflowCompleto
+    );
+
+    // PARTE 1: Salvar o estado da interface das abas (gerenciadorAbas) no localStorage
+    try {
+      const abaSuperiorAtivaObj = obterAbaSuperiorAtivaObj(); // Função auxiliar definida abaixo
+      let idAbaSuperiorAtivaParaSalvar = null;
+      let idSubAbaAtivaParaSalvarNaAbaSuperior = null;
+
+      if (abaSuperiorAtivaObj) {
+        idAbaSuperiorAtivaParaSalvar = abaSuperiorAtivaObj.id;
+        const subAbaAtivaObj = abaSuperiorAtivaObj.subAbas.find(
+          (st) => st.ativa
+        );
+        if (subAbaAtivaObj) {
+          idSubAbaAtivaParaSalvarNaAbaSuperior = subAbaAtivaObj.id;
+        } else if (abaSuperiorAtivaObj.subAbas.length > 0) {
+          // Garante que a primeira sub-aba seja marcada como a ativa para persistência se nenhuma estiver
+          idSubAbaAtivaParaSalvarNaAbaSuperior =
+            abaSuperiorAtivaObj.subAbas[0].id;
+        }
+        // Atualiza o estado da aba superior ativa antes de salvar
+        abaSuperiorAtivaObj.moduloSubAbaAtiva =
+          idSubAbaAtivaParaSalvarNaAbaSuperior;
+      }
+
+      const estadoAbasParaSalvar = {
+        abasSuperiores: gerenciadorAbas.abasSuperiores.map((as) => ({
+          id: as.id,
+          nomeModuloDrawflow: as.nomeModuloDrawflow,
+          nomeExibicao: as.nomeExibicao,
+          fixa: as.fixa || false, // Salva se a aba é fixa
+          moduloSubAbaAtiva:
+            as.subAbas.length > 0
+              ? as.subAbas.find((st) => st.id === as.moduloSubAbaAtiva)?.id ||
+                as.subAbas[0].id
+              : null,
+          subAbas: as.subAbas.map((sa) => ({
+            id: sa.id,
+            nomeModuloDrawflow: sa.nomeModuloDrawflow,
+            nomeExibicao: sa.nomeExibicao,
+            // 'ativa' da sub-aba é inferida ao carregar com base no moduloSubAbaAtiva da aba pai
+          })),
+        })),
+        idAbaSuperiorAtiva: idAbaSuperiorAtivaParaSalvar,
+        idProximaAba: gerenciadorAbas.idProximaAba,
+        idProximaSubAba: gerenciadorAbas.idProximaSubAba,
+      };
+
+      localStorage.setItem(
+        "gerenciadorAbasDrawflow",
+        JSON.stringify(estadoAbasParaSalvar)
+      );
+      console.log("Estado do gerenciador de abas salvo no localStorage.");
+    } catch (error) {
+      console.error("Erro ao salvar estado das abas no localStorage:", error);
+    }
+
+    // PARTE 2: Lógica original para submeter o JSON do Drawflow (com TODOS os módulos) ao backend
+    let campoJsonGalaxia = $(".jsonGalaxia");
+    let btnSalvarWorkFlow = $(".salvarWorkFlow");
+
+    if (campoJsonGalaxia.length && btnSalvarWorkFlow.length) {
+      campoJsonGalaxia.val(JSON.stringify(jsonDrawflowCompleto)); // Usa o JSON completo do Drawflow
+
+      btnSalvarWorkFlow.trigger("click"); // Aciona o submit do formulário que salva no backend
+      console.log(
+        "JSON completo do Drawflow enviado para o formulário e salvamento (backend) acionado."
+      );
+    } else {
+      console.warn(
+        "Campo .jsonGalaxia ou botão .salvarWorkFlow não encontrados. O salvamento principal (backend) pode falhar."
+      );
+    }
   });
   /* DRAG EVENT */
 
   /* Mouse and Touch Actions */
 
+  menuAcoesPaletaElement = document.getElementById("menuAcoesPaletaContainer");
+
+  if (!menuAcoesPaletaElement) {
+    console.error(
+      "Elemento #menuAcoesPaletaContainer não encontrado no DOM! A funcionalidade de menu de ações da paleta será desativada."
+    );
+    ativarMenuAcoesPaleta = false;
+  } else {
+    // Adiciona listeners aos botões do menu UMA VEZ
+    menuAcoesPaletaElement
+      .querySelectorAll(".acao-paleta-btn")
+      .forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation(); // Impede que o clique no botão feche o menu via handleClickGlobalParaFecharMenu
+
+          if (!itemPaletaSegurado) return; // Segurança
+
+          const acao = event.target.getAttribute("data-acao");
+          const nodeType = itemPaletaSegurado.getAttribute("data-node");
+
+          // IMPLEMENTE A LÓGICA DAS SUAS AÇÕES AQUI
+          console.log(`Ação do menu: '${acao}', para o nó tipo: '${nodeType}'`);
+          alert(`Ação: ${acao}\nNó: ${nodeType}`);
+
+          fecharMenuAcoesPaleta();
+        });
+      });
+  }
   var elements = document.getElementsByClassName("drag-drawflow");
   for (var i = 0; i < elements.length; i++) {
     elements[i].addEventListener("touchend", drop, false);
     elements[i].addEventListener("touchmove", positionMobile, false);
-    elements[i].addEventListener("touchstart", drag, false);
+    //elements[i].addEventListener("touchstart", drag, false);
+    let item = elements[i];
+    // --- Desktop Mouse Events ---
+    let isPressAndHold = false;
+    let wasMenuOpenedByHold_Desktop = false;
+    let touchDidMoveSignificantly = false;
+    let initialTouchX = 0,
+      initialTouchY = 0;
+
+    // --- Desktop Mouse Events ---
+    item.addEventListener("mousedown", function (e) {
+      if (
+        !ativarMenuAcoesPaleta ||
+        e.button === 2 ||
+        e.target.classList.contains("injected-favorite-toggle")
+      ) {
+        return;
+      }
+      wasMenuOpenedByHold_Desktop = false;
+      clearTimeout(timerSegurarPaleta);
+
+      timerSegurarPaleta = setTimeout(() => {
+        wasMenuOpenedByHold_Desktop = true;
+        mostrarMenuAcoes(item);
+      }, TEMPO_PARA_SEGURAR);
+    });
+
+    item.addEventListener("mouseup", function (e) {
+      if (!ativarMenuAcoesPaleta) return;
+      clearTimeout(timerSegurarPaleta);
+    });
+
+    item.addEventListener("mouseleave", function (e) {
+      if (!ativarMenuAcoesPaleta) return;
+      clearTimeout(timerSegurarPaleta);
+    });
+
+    // Define ondragstart programaticamente para desktop
+    item.ondragstart = function (event) {
+      if (!ativarMenuAcoesPaleta) {
+        // Funcionalidade desativada: chama a função 'drag' global original para comportamento padrão desktop
+        if (typeof drag === "function") {
+          drag(event); // Asume que 'drag' é a função global que lida com dataTransfer
+        } else {
+          // Fallback
+          event.dataTransfer.setData(
+            "node",
+            event.target.closest(".drag-drawflow").getAttribute("data-node")
+          );
+        }
+        return;
+      }
+
+      // Funcionalidade ATIVA:
+      if (
+        wasMenuOpenedByHold_Desktop ||
+        (menuAcoesPaletaElement &&
+          menuAcoesPaletaElement.style.display !== "none" &&
+          itemPaletaSegurado === item)
+      ) {
+        event.preventDefault(); // Impede o drag se o menu foi aberto por "segurar" ou ainda está visível para este item
+        return false;
+      }
+      // Comportamento de drag padrão para desktop (se não foi "segurar")
+      event.dataTransfer.setData(
+        "node",
+        event.target.closest(".drag-drawflow").getAttribute("data-node")
+      );
+    };
+
+    // --- Mobile Touch Events ---
+    item.addEventListener(
+      "touchstart",
+      function (e) {
+        if (
+          !ativarMenuAcoesPaleta ||
+          e.target.classList.contains("injected-favorite-toggle")
+        ) {
+          return;
+        }
+
+        isPressAndHold = false;
+        touchDidMoveSignificantly = false;
+        clearTimeout(timerSegurarPaleta);
+        const currentItem = e.currentTarget;
+        initialTouchX = e.touches[0].clientX;
+        initialTouchY = e.touches[0].clientY;
+
+        // Otimisticamente, define mobile_item_selec. Será limpo se for "segurar" sem movimento.
+        // Esta linha replica o que a função `drag(ev)` original faria para `ev.type === "touchstart"`.
+        mobile_item_selec = currentItem.getAttribute("data-node");
+
+        timerSegurarPaleta = setTimeout(() => {
+          if (touchDidMoveSignificantly) return;
+
+          isPressAndHold = true;
+          mobile_item_selec = ""; // Essencial: Invalida o drag/drop para a função 'drop' global
+          mostrarMenuAcoes(currentItem);
+          e.preventDefault(); // Previne scroll/outras ações padrão do toque LONGO
+        }, TEMPO_PARA_SEGURAR);
+      },
+      { passive: false }
+    );
+
+    // Listener de touchmove no item (diferente do listener temporário)
+    // Este é para chamar positionMobile, conforme o comportamento original.
+    // Se você já tem item.addEventListener("touchmove", positionMobile, false); em outro loop,
+    // esta duplicata não é necessária. Certifique-se que ele exista.
+    // Se não, adicione:
+    // item.addEventListener('touchmove', function(e) {
+    //     if (touchDidMoveSignificantly) { // Se já detectamos movimento significativo antes
+    //        clearTimeout(timerSegurarPaleta);
+    //     }
+    //     positionMobile(e); // Chama a função global para rastro do drag
+    // });
+
+    // Listener de touchend no item (diferente do listener temporário)
+    // Este é para chamar a função drop global, conforme o comportamento original.
+    // Se você já tem item.addEventListener("touchend", drop, false); em outro loop,
+    // esta duplicata não é necessária. Certifique-se que ele exista.
+    // Se não, adicione:
+    // item.addEventListener("touchend", drop, false);
+
+    // Adição de listeners temporários para cancelar o "segurar" se houver movimento
+    // Estes são adicionados *dentro* do 'touchstart' e removidos após o toque.
+    const addTemporaryTouchHandlers = (event) => {
+      const onTempTouchMove = (moveEvent) => {
+        const deltaX = Math.abs(moveEvent.touches[0].clientX - initialTouchX);
+        const deltaY = Math.abs(moveEvent.touches[0].clientY - initialTouchY);
+        const moveThreshold = 15;
+
+        if (deltaX > moveThreshold || deltaY > moveThreshold) {
+          touchDidMoveSignificantly = true;
+          clearTimeout(timerSegurarPaleta);
+          removeTemporaryTouchHandlers();
+        }
+        // A função global positionMobile DEVE ser chamada pelo listener persistente no item.
+      };
+
+      const onTempTouchEnd = () => {
+        clearTimeout(timerSegurarPaleta);
+        removeTemporaryTouchHandlers();
+        // A função global drop DEVE ser chamada pelo listener persistente no item.
+      };
+
+      const removeTemporaryTouchHandlers = () => {
+        item.removeEventListener("touchmove", onTempTouchMove);
+        item.removeEventListener("touchend", onTempTouchEnd);
+        item.removeEventListener("touchcancel", onTempTouchEnd);
+      };
+
+      // Adiciona os handlers temporários ao item, não ao document
+      item.addEventListener("touchmove", onTempTouchMove);
+      item.addEventListener("touchend", onTempTouchEnd);
+      item.addEventListener("touchcancel", onTempTouchEnd);
+    };
+    // Chama a função para adicionar os handlers temporários no final do listener de touchstart do item.
+    // Isso precisa ser feito após a definição de initialTouchX/Y.
+    // O listener de touchstart já foi definido acima. A chamada seria assim:
+    // No final do listener 'item.addEventListener('touchstart', function(e) { ... });':
+    // addTemporaryTouchHandlers(e); // Passa o evento 'e' se necessário, mas não parece ser usado.
+    // No entanto, é mais limpo colocar a definição e adição desses handlers *dentro* do listener de touchstart principal.
+
+    // Refatorando: Colocando os handlers temporários DENTRO do listener de touchstart principal:
+    // A lógica já está no `item.addEventListener('touchstart', function(e) { ... });` acima,
+    // com a definição de `tempOnTouchMove` e `tempOnTouchEnd` e sua adição/remoção.
   }
 
   document
@@ -770,6 +1678,45 @@ $(document).ready(function (e) {
     }
   );
 
+  // Modificar a função global 'drop' para respeitar o "segurar" (via mobile_item_selec)
+  const originalGlobalDropFunction = window.drop;
+
+  window.drop = function (ev) {
+    // Sobrescreve a função global 'drop'
+    if (ev.type === "touchend") {
+      if (!mobile_item_selec) {
+        // Se mobile_item_selec está vazio, provavelmente foi um "segurar"
+        // fecharMenuAcoesPaleta(); // Opcional: fechar o menu aqui também.
+        return; // Previne o drop
+      }
+    }
+
+    let result;
+    if (typeof originalGlobalDropFunction === "function") {
+      result = originalGlobalDropFunction(ev); // Chama a lógica de drop original
+    } else {
+      console.warn(
+        "Função drop original (window.drop) não encontrada. O drop pode não funcionar como esperado."
+      );
+    }
+
+    // Após uma tentativa de drop (bem-sucedida ou não, que não foi um "segurar"),
+    // se um menu estiver visível e não foi uma interação com o menu em si, ele deve fechar.
+    // A função handleClickGlobalParaFecharMenu já trata cliques fora.
+    // Se o drop ocorreu, o menu de "segurar" provavelmente não é mais o foco.
+    // Esta verificação pode ser útil se o evento de 'click' para fechar não for suficiente.
+    if (
+      menuAcoesPaletaElement &&
+      menuAcoesPaletaElement.style.display !== "none" &&
+      itemPaletaSegurado &&
+      !itemPaletaSegurado.contains(ev.target) &&
+      !menuAcoesPaletaElement.contains(ev.target)
+    ) {
+      // fecharMenuAcoesPaleta(); // Descomente se necessário, mas pode ser redundante.
+    }
+    return result;
+  };
+
   // ... (seu código existente do document.ready) ...
 
   // Eventos para resetar o foco do output
@@ -1004,13 +1951,20 @@ $(document).ready(function (e) {
         event.ctrlKey &&
         ["c", "v", "x", "z", "a"].includes(event.key.toLowerCase())
       ) {
+        console.log({
+          naoEncontradoKey: "ccccc",
+        });
         return;
       }
       // Permite Shift+Setas para seleção de texto
       if (
+        !event.ctrlKey &&
         event.shiftKey &&
         ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)
       ) {
+        console.log({
+          naoEncontradoKey: "ArrowRightArrowRightArrowRightArrowRight",
+        });
         return;
       }
       // Se for uma tecla de seta sozinha (sem Ctrl/Shift/Alt/Meta) E o foco não for o input da paleta,
@@ -1025,6 +1979,8 @@ $(document).ready(function (e) {
         !event.metaKey
       ) {
         if (activeElement.id !== "palette-search-input-injected") {
+          console.log({ naoEncontradoKey: "palette-search-input-injected" });
+
           // Paleta tem seu próprio handler de Enter
           return;
         }
@@ -1156,6 +2112,8 @@ $(document).ready(function (e) {
       event.shiftKey &&
       (event.key === "ArrowLeft" || event.key === "ArrowRight")
     ) {
+      console.log({ arrowleft: "00000" });
+
       if (editor.node_selected) {
         event.preventDefault();
         eventHandled = true;
@@ -1314,6 +2272,8 @@ $(document).ready(function (e) {
       !event.shiftKey &&
       !event.altKey
     ) {
+      console.log({ arrowleft: "111111" });
+
       if (editor.node_selected) {
         event.preventDefault();
         eventHandled = true;
@@ -1522,6 +2482,166 @@ $(document).ready(function (e) {
             `Nenhum nó encontrado na direção ${event.key} com alinhamento horizontal.`
           );
         }
+      }
+    } else if (
+      event.ctrlKey &&
+      event.shiftKey &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    ) {
+      if (editor.node_selected) {
+        // Verifica se um nó está selecionado no editor Drawflow
+        event.preventDefault();
+        eventHandled = true; // Marca que o evento foi tratado pela lógica Drawflow
+
+        const selectedNodeIdOnly = editor.node_selected.id.slice(5); // Ex: "1"
+        const moduleName = editor.module; // Pega o módulo atual do editor
+        const moduleData = editor.drawflow.drawflow[moduleName].data;
+        const selectedNodeData = moduleData[selectedNodeIdOnly];
+
+        if (!selectedNodeData || !selectedNodeData.inputs) {
+          console.log(
+            "Navegação entre irmãos: Nó selecionado não tem dados de input."
+          );
+          return;
+        }
+
+        let parentNodeId = null;
+        let parentOutputClass = null;
+
+        // Encontra o pai e a porta de saída do pai
+        for (const inputClass in selectedNodeData.inputs) {
+          const inputConnections =
+            selectedNodeData.inputs[inputClass].connections;
+          if (inputConnections && inputConnections.length > 0) {
+            parentNodeId = String(inputConnections[0].node);
+            parentOutputClass = inputConnections[0].input; // 'input' na conexão do filho é o 'output_class' do pai
+            break;
+          }
+        }
+
+        if (parentNodeId && parentOutputClass) {
+          const parentNodeData = moduleData[parentNodeId];
+          if (
+            parentNodeData &&
+            parentNodeData.outputs &&
+            parentNodeData.outputs[parentOutputClass]
+          ) {
+            const siblingConnections =
+              parentNodeData.outputs[parentOutputClass].connections;
+            let siblingNodeIds = siblingConnections.map((conn) =>
+              String(conn.node)
+            );
+
+            if (siblingNodeIds.length <= 1) {
+              console.log(
+                "Navegação entre irmãos: Não há outros irmãos para este output."
+              );
+              return;
+            }
+
+            // Ordena os irmãos visualmente (de cima para baixo, depois esquerda para direita)
+            siblingNodeIds.sort((idA, idB) => {
+              const nodeA_element = editor.container.querySelector(
+                `#node-${idA}`
+              ); // Usa editor.container
+              const nodeB_element = editor.container.querySelector(
+                `#node-${idB}`
+              );
+
+              if (!nodeA_element || !nodeB_element) return 0;
+
+              const topA = parseFloat(nodeA_element.style.top || 0);
+              const topB = parseFloat(nodeB_element.style.top || 0);
+
+              if (Math.abs(topA - topB) > 0.1) {
+                // Tolerância para floats
+                return topA - topB;
+              }
+
+              const leftA = parseFloat(nodeA_element.style.left || 0);
+              const leftB = parseFloat(nodeB_element.style.left || 0);
+              return leftA - leftB;
+            });
+
+            const currentIndex = siblingNodeIds.indexOf(selectedNodeIdOnly);
+
+            if (currentIndex !== -1) {
+              let nextIndex;
+              if (event.key === "ArrowDown") {
+                nextIndex = (currentIndex + 1) % siblingNodeIds.length;
+              } else {
+                // ArrowUp
+                nextIndex =
+                  (currentIndex - 1 + siblingNodeIds.length) %
+                  siblingNodeIds.length;
+              }
+
+              const nextNodeIdToSelect = siblingNodeIds[nextIndex];
+              const nextNodeElementToSelect = editor.container.querySelector(
+                `#node-${nextNodeIdToSelect}`
+              );
+
+              if (
+                nextNodeElementToSelect &&
+                nextNodeElementToSelect !== editor.node_selected
+              ) {
+                const oldSelectedNodeElement = editor.node_selected;
+
+                // Deselecionar nó antigo
+                if (oldSelectedNodeElement) {
+                  oldSelectedNodeElement.classList.remove("selected");
+                  editor.dispatch(
+                    "nodeUnselected",
+                    oldSelectedNodeElement.id.slice(5)
+                  );
+                }
+
+                // Deselecionar conexão antiga, se houver
+                if (editor.connection_selected != null) {
+                  editor.connection_selected.classList.remove("selected");
+                  editor.removeReouteConnectionSelected(); // Função existente
+                  editor.connection_selected = null;
+                  editor.dispatch("connectionUnselected", true);
+                }
+
+                // Selecionar novo nó
+                editor.node_selected = nextNodeElementToSelect;
+                editor.node_selected.classList.add("selected");
+                editor.dispatch("nodeSelected", nextNodeIdToSelect);
+
+                console.log(
+                  `Navegação entre irmãos: Selecionado nó ${nextNodeIdToSelect}`
+                );
+
+                // Foco visual no nó (se implementado e desejado)
+                if (typeof focusViewOnNode === "function") {
+                  // Verifica se a função focusViewOnNode existe
+                  setTimeout(() => {
+                    if (editor.node_selected === nextNodeElementToSelect)
+                      focusViewOnNode(nextNodeElementToSelect, editor);
+                  }, 50);
+                } else {
+                  // Fallback simples para scrollIntoView se focusViewOnNode não existir
+                  // nextNodeElementToSelect.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                }
+              }
+            }
+          } else {
+            console.log(
+              "Navegação entre irmãos: Output do pai não encontrado ou sem conexões."
+            );
+          }
+        } else {
+          console.log(
+            "Navegação entre irmãos: Não foi possível determinar o nó pai/output para o nó selecionado."
+          );
+        }
+      } else {
+        console.log(
+          "Navegação entre irmãos: Nenhum nó selecionado no Drawflow."
+        );
+        // Se nenhum nó estiver selecionado, pode-se tentar focar o primeiro nó "focável"
+        // ou o último selecionado, mas isso adicionaria complexidade.
       }
     }
     // --- FIM DA LÓGICA DE NAVEGAÇÃO DO DRAWFLOW ---
@@ -1807,20 +2927,25 @@ function drop(ev) {
     addNodeToDrawFlow(data, ev.clientX, ev.clientY);
   }
 }
-
-function addNodeToDrawFlow(name, pos_x, pos_y, data = null) {
+function addNodeToDrawFlow(
+  name,
+  pos_x_client,
+  pos_y_client,
+  data_param = null
+) {
   if (editor.editor_mode === "fixed") {
     return false;
   }
-  pos_x =
-    pos_x *
+  // Conversão de coordenadas do cliente para o canvas
+  let pos_x_canvas =
+    pos_x_client *
       (editor.precanvas.clientWidth /
         (editor.precanvas.clientWidth * editor.zoom)) -
     editor.precanvas.getBoundingClientRect().x *
       (editor.precanvas.clientWidth /
         (editor.precanvas.clientWidth * editor.zoom));
-  pos_y =
-    pos_y *
+  let pos_y_canvas =
+    pos_y_client *
       (editor.precanvas.clientHeight /
         (editor.precanvas.clientHeight * editor.zoom)) -
     editor.precanvas.getBoundingClientRect().y *
@@ -1829,17 +2954,14 @@ function addNodeToDrawFlow(name, pos_x, pos_y, data = null) {
 
   let existe = $(".node-elem-" + name);
   if (existe.length > 0) {
-    // Checa se o elemento existe
-    let valor = existe.val(); // HTML do nó
+    let valor_html = existe.val(); // HTML do nó
     let dadosEntradaRaw = existe.data("entrada");
     let dadosSaidaRaw = existe.data("saida");
     let dadosParseados;
 
-    if (data) {
-      // Se dados são passados diretamente (ex: ao colar)
-      dadosParseados = data;
+    if (data_param) {
+      dadosParseados = data_param;
     } else {
-      // Pega do data-attribute
       dadosParseados = existe.data("dados");
       if (typeof dadosParseados === "string" && dadosParseados.trim() !== "") {
         try {
@@ -1856,105 +2978,161 @@ function addNodeToDrawFlow(name, pos_x, pos_y, data = null) {
       }
     }
 
-    function parseInputOutputData(rawData, defaultValue = []) {
+    // Sua função parseInputOutputData (mantida como você a definiu)
+    // Apenas garanta que ela retorne arrays. Se ela já faz isso, ótimo.
+    // Para o exemplo, vou assumir que ela está correta e retorna arrays.
+    function parseInputOutputData(rawData, type) {
+      // Adicionado 'type' para default handling
       if (Array.isArray(rawData)) return rawData;
+      let defaultValue = [];
+      if (type === "output") {
+        // Garantir que saídas tenham um formato default se rawData não for array
+        defaultValue = [
+          {
+            dados: {
+              codigo: "default_" + Math.random().toString(36).substring(2, 7),
+              personalizado: 0,
+            },
+          },
+        ];
+      }
+
       if (typeof rawData === "string" && rawData.trim() !== "") {
         try {
           const parsed = JSON.parse(rawData);
           return Array.isArray(parsed) ? parsed : defaultValue;
         } catch (e) {
-          console.warn("Erro ao parsear dados de entrada/saida:", e, rawData);
+          console.warn(
+            "Erro ao parsear dados de entrada/saida string:",
+            e,
+            rawData
+          );
           return defaultValue;
         }
       }
       if (typeof rawData === "number") {
-        // Se for um número, cria um array com essa quantidade de itens padrão
         if (rawData > 0) {
-          // Para saídas, você pode querer um objeto padrão mais específico
-          let defaultItem =
-            arguments.length > 1 && arguments[0] === dadosSaidaRaw
+          let itemTemplate =
+            type === "output"
               ? { dados: { codigo: "default", personalizado: 0 } }
               : {};
-          return new Array(rawData).fill(defaultItem);
+          // Criar cópias distintas para cada item do array
+          return Array.from({ length: rawData }, (_, i) =>
+            JSON.parse(
+              JSON.stringify({
+                ...itemTemplate,
+                dados: {
+                  ...itemTemplate.dados,
+                  codigo:
+                    (itemTemplate.dados.codigo || "default") + "_" + (i + 1),
+                },
+              })
+            )
+          );
         }
         return defaultValue;
       }
       return defaultValue;
     }
 
-    let dadosEntradaArray = parseInputOutputData(dadosEntradaRaw);
-    let dadosSaidaArray = parseInputOutputData(dadosSaidaRaw);
+    let dadosEntradaArray = parseInputOutputData(dadosEntradaRaw, "input");
+    let dadosSaidaArray = parseInputOutputData(dadosSaidaRaw, "output");
 
+    // Preservar o nó fonte e a classe do output se um output estava focado ANTES de adicionar o novo nó
+    let sourceNodeForConnection = null;
+    let outputClassForAutoConnection = null;
+    // Verifique a disponibilidade de focusedOutputElement no escopo correto
+    if (
+      typeof focusedOutputElement !== "undefined" &&
+      focusedOutputElement &&
+      editor.node_selected
+    ) {
+      sourceNodeForConnection = editor.node_selected; // Nó fonte
+      for (let cls of focusedOutputElement.classList) {
+        if (cls.startsWith("output_") && cls !== "output-focused") {
+          outputClassForAutoConnection = cls;
+          break;
+        }
+      }
+    }
+
+    // Adicionar o novo nó
     const newNodeId = editor.addNode(
       name,
       dadosEntradaArray,
       dadosSaidaArray,
-      pos_x,
-      pos_y,
-      name,
-      dadosParseados,
-      valor
+      pos_x_canvas, // Usar coordenadas do canvas
+      pos_y_canvas, // Usar coordenadas do canvas
+      name, // classoverride
+      dadosParseados, // data
+      valor_html, // html
+      false // typenode (Drawflow.js default)
     );
 
-    // Lógica de conexão se um output estava focado (similar à da paleta)
-    if (newNodeId && focusedOutputElement && editor.node_selected) {
-      const sourceNodeId = editor.node_selected.id.replace("node-", "");
-      let outputClassForConnection = null;
-      for (let cls of focusedOutputElement.classList) {
-        if (cls.startsWith("output_") && cls !== "output-focused") {
-          outputClassForConnection = cls;
-          break;
-        }
-      }
-
-      if (outputClassForConnection) {
+    if (newNodeId) {
+      // Tentar a conexão automática se aplicável
+      if (sourceNodeForConnection && outputClassForAutoConnection) {
+        const sourceNodeIdString = sourceNodeForConnection.id.replace(
+          "node-",
+          ""
+        );
         const newNodeData = editor.getNodeFromId(String(newNodeId));
         if (
           newNodeData &&
           newNodeData.inputs &&
           Object.keys(newNodeData.inputs).length > 0
         ) {
-          const firstInputClass = Object.keys(newNodeData.inputs)[0];
+          const firstInputClassOfNewNode = Object.keys(newNodeData.inputs)[0];
           editor.addConnection(
-            sourceNodeId,
+            sourceNodeIdString,
             String(newNodeId),
-            outputClassForConnection,
-            firstInputClass
+            outputClassForAutoConnection,
+            firstInputClassOfNewNode
           );
-          // DENTRO do setTimeout na função addNodeToDrawFlow:
-          const newNodeElement_dd = document.getElementById(
-            "node-" + String(newNodeId)
-          ); // Note a variável _dd
-          if (newNodeElement_dd) {
-            // a. Selecionar o novo nó
-            if (editor.node_selected) {
-              editor.node_selected.classList.remove("selected");
-            }
-            newNodeElement_dd.classList.add("selected");
-            editor.node_selected = newNodeElement_dd;
-            editor.dispatch("nodeSelected", String(newNodeId));
-            console.log(`[DragDrop] Nó ${newNodeId} selecionado.`);
-
-            // b. Mover a visão para o novo nó usando a função auxiliar
-            focusViewOnNode(newNodeElement_dd, editor);
-          } else {
-            console.warn(
-              `[DragDrop] Elemento do nó ${newNodeId} não encontrado após alinhamento para focar visão.`
-            );
-          }
+        }
+        // Chame resetOutputFocus se estiver definido e for necessário
+        if (typeof resetOutputFocus === "function") {
+          resetOutputFocus();
         }
       }
-      resetOutputFocus();
+
+      // LÓGICA DE SELEÇÃO DO NOVO NÓ (SEMPRE EXECUTADA APÓS CRIAÇÃO BEM-SUCEDIDA)
+      const newNodeElement = document.getElementById(
+        "node-" + String(newNodeId)
+      );
+      if (newNodeElement) {
+        // Deselecionar nó anterior se houver e for diferente
+        if (
+          editor.node_selected != null &&
+          editor.node_selected !== newNodeElement
+        ) {
+          editor.node_selected.classList.remove("selected");
+          editor.dispatch("nodeUnselected", true);
+        }
+        // Deselecionar conexão anterior se houver
+        if (editor.connection_selected != null) {
+          editor.connection_selected.classList.remove("selected");
+          editor.removeReouteConnectionSelected(); // Função de drawflow.js
+          editor.connection_selected = null;
+        }
+
+        // Selecionar o novo nó
+        editor.ele_selected = newNodeElement; // Essencial para o estado interno do Drawflow
+        editor.node_selected = newNodeElement;
+        newNodeElement.classList.add("selected");
+        editor.dispatch("nodeSelected", String(newNodeId)); // Dispara o evento padrão do Drawflow
+
+        editor.container.focus(); // Focar o container para eventos de teclado
+      }
     }
-    return; // Retorna após adicionar o nó
-  }
+    return; // Fim da lógica para nó existente na paleta
+  } // Fim do if (existe.length > 0)
 
-  // O switch case abaixo é um fallback se ".node-elem-" + name não for encontrado.
-  // Se sua paleta sempre cria os elementos ".node-elem-", este fallback pode não ser necessário.
+  // Seu switch case original como fallback
   // alert("Elemento de template para " + name + " não encontrado. Usando fallback.");
-  // switch (name) { ... seu switch case ... }
+  // switch (name) { ... } // Se este switch ainda for relevante e adicionar nós,
+  // a mesma lógica de seleção acima deve ser replicada para o newNodeId gerado por ele.
 }
-
 var transform = "";
 
 function showpopup(e) {
@@ -2138,8 +3316,8 @@ function alinharDrawflowHierarquicamente(editor) {
   const visitados = new Set();
   const posicoesCalculadas = {};
 
-  const horizontalSpacing = 640; // <--- MODIFICADO
-  const verticalSpacing = 100;
+  const horizontalSpacing = 520; // <--- MODIFICADO
+  const verticalSpacing = 80;
   const nodeHeightEstimate = 80;
   const initialXOffset = 100; // <--- MODIFICADO
   const initialYOffset = 50;
