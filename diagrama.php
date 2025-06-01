@@ -795,120 +795,59 @@
       color: #ffffff;
     }
 
-    /* [[drawflow.css]] ou <style> em diagrama.php */
-    .abas-geral-container {
+    #file-tabs,
+    #sub-tabs {
       display: flex;
-      align-items: center;
-      padding: 5px;
-      background-color: #f0f0f0;
-      /* Cor de fundo da barra de abas */
-      user-select: none;
+      gap: 8px;
+      margin: 10px;
+      flex-wrap: wrap;
     }
 
-    .tabs-list {
-      display: flex;
-      flex-grow: 1;
-      overflow-x: auto;
-      /* Scroll se muitas abas */
-      overflow-y: hidden;
-    }
-
-    .abas-superiores-container {
-      border-bottom: 1px solid #ccc;
-    }
-
-    .abas-inferiores-container {
-      border-top: 1px solid #ccc;
-    }
-
-    .tab-item,
-    .sub-tab-item {
-      padding: 8px 12px;
-      margin-right: 3px;
-      border: 1px solid #ccc;
-      background-color: #e9e9e9;
+    .file-tab,
+    .sub-tab,
+    .new-file-btn,
+    .new-sub-btn {
+      background: linear-gradient(145deg, #1b1b1b, #292929);
+      border: 1px solid #333;
+      color: #0ff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-family: monospace;
       cursor: pointer;
-      border-radius: 4px 4px 0 0;
-      white-space: nowrap;
-      display: flex;
-      align-items: center;
-      font-size: 0.9em;
-      position: relative;
-      /* Para o botão de fechar */
+      transition: 0.2s;
     }
 
-    .abas-inferiores-container .sub-tab-item {
-      font-size: 0.85em;
-      padding: 6px 10px;
-    }
-
-    .tab-item.active,
-    .sub-tab-item.active {
-      background-color: #ffffff;
-      /* Cor da aba ativa, idealmente a cor do seu canvas */
-      border-bottom-color: #ffffff;
-      /* Para fundir com o conteúdo */
+    .file-tab.active,
+    .sub-tab.active {
+      background: #0ff;
+      color: #111;
       font-weight: bold;
     }
 
-    .abas-inferiores-container .tab-item.active,
-    .abas-inferiores-container .sub-tab-item.active {
-      border-top-color: #ccc;
-      border-bottom-color: transparent;
-      /* Se estiver acima do canvas */
-      border-top-left-radius: 0;
-      border-top-right-radius: 0;
-      border-bottom-left-radius: 4px;
-      border-bottom-right-radius: 4px;
-      background-color: #ffffff;
-      border-top: 1px solid #ccc;
-      /* Ajuste conforme necessário */
-    }
-
-
-    .tab-nome {
-      margin-right: 5px;
-      /* Espaço antes do botão de fechar */
-    }
-
-    .close-tab-btn {
-      margin-left: 8px;
-      font-size: 14px;
-      line-height: 1;
-      padding: 0px 4px;
-      border-radius: 50%;
-      opacity: 0.6;
-    }
-
-    .close-tab-btn:hover {
-      background-color: #dcdcdc;
-      opacity: 1;
-    }
-
-    .add-tab-btn {
-      padding: 6px 10px;
-      margin-left: 8px;
-      border: 1px solid #ccc;
-      background-color: #e0e0e0;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-
-    .add-tab-btn:hover {
-      background-color: #d0d0d0;
+    .file-tab:hover,
+    .sub-tab:hover,
+    .new-file-btn:hover,
+    .new-sub-btn:hover {
+      background: #0ff4;
     }
   </style>
-  <div class="abas-geral-container abas-superiores-container">
-    <div id="lista-abas-superiores" class="tabs-list">
-    </div>
-    <button id="btn-add-aba-superior" class="add-tab-btn" title="Adicionar novo arquivo">+</button>
+  <div id="file-tabs" class="file-tabs">
+    <!-- Abas superiores (arquivos) -->
+    <button class="file-tab active" data-id="file1">Arquivo 1</button>
+    <button class="file-tab" data-id="file2">Arquivo 2</button>
   </div>
 
-  <div class="abas-geral-container abas-inferiores-container">
-    <div id="lista-abas-inferiores" class="tabs-list sub-tabs-list">
-    </div>
-    <button id="btn-add-sub-aba" class="add-tab-btn" title="Adicionar nova página/sub-diagrama ao arquivo atual">+</button>
+  <div id="sub-tabs" class="sub-tabs">
+    <!-- Abas inferiores (subpáginas) -->
+    <button class="sub-tab active" data-sub="main">Main</button>
   </div>
+  <div id="file-tabs" class="file-tabs"></div>
+  <button id="new-file-btn" class="new-file-btn">+ Novo Arquivo</button>
+
+  <div id="sub-tabs" class="sub-tabs"></div>
+  <button id="new-sub-btn" class="new-sub-btn">+ Nova Página</button>
+
+
   <div class="offcanvas offcanvas-end" tabindex="-1" id="global-editor-fullscreen" style="z-index:9999; width:100vw;">
     <div class="offcanvas-header">
       <button id="close-fullscreen" style="position: absolute; top: 10px; right: 10px; z-index: 1001; background-color: #333; color: #fff; border: none; padding: 5px 10px; cursor: pointer;"></button>
